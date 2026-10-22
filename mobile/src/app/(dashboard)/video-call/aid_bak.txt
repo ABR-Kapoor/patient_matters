@@ -1,0 +1,526 @@
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Platform, PermissionsAndroid, findNodeHandle } from 'react-native';
+import type { ZegoStream, ZegoUser } from 'zego-express-engine-reactnative';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { X, Mic, MicOff, Camera, CameraOff, RefreshCw } from 'lucide-react-native';
+import { useAuthToken, usePatientIdentity } from '../../../hooks/stubs';
+import { fetchWithAuth } from '../../../lib/fetchWithAuth';
+
+type ZegoEngineModule = typeof import('zego-express-engine-reactnative');
+type ZegoEngineInstance = InstanceType<ZegoEngineModule['default']>;
+type ZegoTextureViewType = InstanceType<ZegoEngineModule['ZegoTextureView']>;
+
+export default function VideoCallPage() {
+  const { aid } = useLocalSearchParams();
+  const router = useRouter();
+  const token = useAuthToken();
+  const { data: identity, isLoading: isIdentityLoading } = usePatientIdentity(token);
+
+  const [loading, setLoading] = useState(true);
+  const [zegoToken, setZegoToken] = useState<string | null>(null);
+  const [joined, setJoined] = useState(false);
+  const [remoteStreams, setRemoteStreams] = useState<ZegoStream[]>([]);
+  const [localTag, setLocalTag] = useState<number | null>(null);
+  const [remoteTag, setRemoteTag] = useState<number | null>(null);
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const [front, setFront] = useState(true);
+  const [zegoModule, setZegoModule] = useState<ZegoEngineModule | null>(null);
+  const [zegoLoadFailed, setZegoLoadFailed] = useState(false);
+
+  const tokenFetched = useRef(false);
+  const initStartedRef = useRef(false);
+  const publishedRef = useRef(false);
+  const engineRef = useRef<ZegoEngineInstance | null>(null);
+  const localViewRef = useRef<ZegoTextureViewType | null>(null);
+  const remoteViewRef = useRef<ZegoTextureViewType | null>(null);
+  const joinedRef = useRef(false);
+  const endedRef = useRef(false);
+  const remoteLeftRef = useRef(false);
+  const navigatedRef = useRef(false);
+  const remoteStreamIdRef = useRef<string | null>(null);
+
+  const appID = parseInt(process.env.EXPO_PUBLIC_ZEGO_APP_ID || '572477899', 10);
+
+  // Stable random User ID for the entire duration of this component mount
+  const stableUserID = useMemo(() => {
+    if (!identity?.uid) return null;
+    return (String(identity.uid).replace(/-/g, '').trim() + '_' + Math.floor(Math.random() * 100000)).slice(0, 64);
+  }, [identity?.uid]);
+
+  const roomID = useMemo(() => {
+    if (!aid) return null;
+    return ('appointment_' + String(aid)).trim().slice(0, 64);
+  }, [aid]);
+
+  const selfStreamID = stableUserID ? (('patient_' + stableUserID).trim().slice(0, 64)) : null;
+
+  // Load the native ZEGO module dynamically so a missing native link shows a clear
+  // message instead of crashing (the SDK reads NativeModules at module load time).
+  useEffect(() => {
+    let cancelled = false;
+    import('zego-express-engine-reactnative')
+      .then((m) => {
+        if (cancelled) return;
+        // The SDK dereferences NativeModules while its module body evaluates. Metro
+        // reports that failure through ErrorUtils and then *resolves* the import with
+        // a stub instead of rejecting, so a missing native engine arrives here as an
+        // absent `default` export. Validate the shape rather than trusting the promise.
+        const mod = m as ZegoEngineModule;
+        if (typeof mod?.default !== 'function' || !mod.ZegoTextureView) {
+          console.error(
+            '[Patient] ZEGO native module resolved without an engine. The native module is not linked into this build.'
+          );
+          setZegoLoadFailed(true);
+          setLoading(false);
+          return;
+        }
+        setZegoModule(mod);
+      })
+      .catch((e) => {
+        console.error('[Patient] Could not load ZEGO native module:', e);
+        if (!cancelled) {
+          setZegoLoadFailed(true);
+          setLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Fetch a Zego room token from our backend
+  useEffect(() => {
+    async function fetchToken() {
+      if (!stableUserID || !roomID || tokenFetched.current) return;
+      tokenFetched.current = true;
+
+      try {
+        const response = await fetchWithAuth(`/api/calls/zego-token`, token, {
+          method: 'POST',
+          body: JSON.stringify({ userId: stableUserID, roomId: roomID }),
+        });
+        const data = await response.json();
+
+        if (data.success && data.token) {
+          setZegoToken(data.token);
+        } else {
+          setLoading(false);
+          Alert.alert('Error', 'Failed to generate secure call token');
+        }
+      } catch (err) {
+        console.error('Token fetch error:', err);
+        setLoading(false);
+        Alert.alert('Network Error', 'Could not reach token server');
+      }
+    }
+    fetchToken();
+    // Intentionally omit 'token' to prevent Clerk getToken instability from causing infinite reloads
+  }, [stableUserID, roomID]);
+
+  // Grant camera + microphone before the native SDK starts capture
+  const requestMediaPermissions = useCallback(async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+      ]);
+    } catch {
+      // Best-effort warm-up only; the ZEGO SDK surfaces real errors via callbacks.
+    }
+  }, []);
+
+  useEffect(() => {
+    requestMediaPermissions();
+  }, [requestMediaPermissions]);
+
+  const goBackOnce = useCallback(() => {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    router.back();
+  }, [router]);
+
+  const reportCallStart = useCallback(async () => {
+    if (!aid) return;
+    try {
+      const res = await fetchWithAuth(`/api/appointments/${String(aid)}/start-call`, token, { method: 'POST' });
+      const data = await res.json();
+      console.log('[Patient] Call start reported:', data.success);
+    } catch (err) {
+      console.error('[Patient] Call start error:', err);
+    }
+  }, [aid, token]);
+
+  const reportCallEnd = useCallback(async () => {
+    if (!aid) return;
+    try {
+      const res = await fetchWithAuth(`/api/appointments/${String(aid)}/call-duration`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({ end_time: new Date().toISOString() }),
+      });
+      const data = await res.json();
+      console.log('[Patient] Call end reported:', data.success, data.data?.status);
+    } catch (err) {
+      console.error('[Patient] Call end patch error:', err);
+    }
+  }, [aid, token]);
+
+  // Keep latest callbacks/module reachable from engine event handlers without stale closures
+  const reportCallStartRef = useRef(reportCallStart);
+  const reportCallEndRef = useRef(reportCallEnd);
+  const goBackOnceRef = useRef(goBackOnce);
+  const zegoModuleRef = useRef<ZegoEngineModule | null>(null);
+  useEffect(() => {
+    reportCallStartRef.current = reportCallStart;
+    reportCallEndRef.current = reportCallEnd;
+    goBackOnceRef.current = goBackOnce;
+    if (zegoModule) zegoModuleRef.current = zegoModule;
+  }, [reportCallStart, reportCallEnd, goBackOnce, zegoModule]);
+
+  const teardown = useCallback(async () => {
+    const eng = engineRef.current;
+    engineRef.current = null;
+    if (eng) {
+      try { await eng.stopPublishingStream(undefined); } catch {}
+      try { await eng.stopPreview(undefined); } catch {}
+      if (remoteStreamIdRef.current) {
+        try { await eng.stopPlayingStream(remoteStreamIdRef.current); } catch {}
+      }
+      try { await eng.logoutRoom(undefined); } catch {}
+    }
+    const mod = zegoModuleRef.current;
+    if (mod) {
+      try { await mod.default.destroyEngine(); } catch {}
+    }
+  }, []);
+
+  // Initialize engine, register handlers and log into the room once the token is ready
+  useEffect(() => {
+    if (!stableUserID || !roomID || !zegoToken || !selfStreamID || !zegoModule || initStartedRef.current) return;
+    initStartedRef.current = true;
+    let disposed = false;
+    const userName = identity?.name || 'Patient';
+    const ZegoExpressEngine = zegoModule.default;
+    const {
+      ZegoEngineProfile,
+      ZegoScenario,
+      ZegoVideoConfig,
+      ZegoVideoConfigPreset,
+      ZegoRoomStateChangedReason,
+      ZegoUpdateType,
+      ZegoUser,
+      ZegoRoomConfig,
+    } = zegoModule;
+
+    async function init() {
+      try {
+        await requestMediaPermissions();
+
+        const engine = await ZegoExpressEngine.createEngineWithProfile(
+          new ZegoEngineProfile(appID, '', ZegoScenario.Default)
+        );
+        if (disposed) {
+          await ZegoExpressEngine.destroyEngine().catch(() => {});
+          return;
+        }
+        engineRef.current = engine;
+
+        engine.setAudioRouteToSpeaker(true).catch(() => {});
+        engine.setVideoConfig(new ZegoVideoConfig(ZegoVideoConfigPreset.Preset540P), undefined).catch(() => {});
+
+        engine.on('roomStateChanged', (rID: string, reason: number, errorCode: number) => {
+          console.log(`[Patient] Room state: ${reason} errorCode=${errorCode}`);
+          if (reason === ZegoRoomStateChangedReason.Logined) {
+            joinedRef.current = true;
+            setJoined(true);
+            setLoading(false);
+            reportCallStartRef.current();
+          } else if (reason === ZegoRoomStateChangedReason.LoginFailed) {
+            setLoading(false);
+            Alert.alert(
+              'Could not join call',
+              errorCode === 20012
+                ? 'ZEGO rejected this AppID (access hub error 20012, ACCESSHUB_INVALID_APPID). Confirm the AppID is correct and the project is activated for the Video Call (Express) service in the ZEGOCLOUD console.'
+                : `Login failed (${errorCode ?? 'unknown'}).`
+            );
+          } else if (reason === ZegoRoomStateChangedReason.KickOut) {
+            Alert.alert('Call ended', 'You were signed out of this room.');
+            if (joinedRef.current && remoteLeftRef.current && !endedRef.current) {
+              endedRef.current = true;
+              reportCallEndRef.current();
+            }
+            teardown();
+            goBackOnceRef.current();
+          } else if (reason === ZegoRoomStateChangedReason.ReconnectFailed) {
+            setLoading(false);
+            Alert.alert('Connection lost', 'Reconnection failed. Please try again.');
+          }
+        });
+
+        engine.on('roomStreamUpdate', (rID: string, updateType: number, streamList: ZegoStream[]) => {
+          const remoteStreamsList = streamList.filter((s) => s.user?.userID !== stableUserID);
+          if (updateType === ZegoUpdateType.Add) {
+            if (remoteStreamsList.length > 0) {
+              setRemoteStreams((prev) => {
+                const merged = [...prev];
+                remoteStreamsList.forEach((s) => {
+                  if (!merged.some((m) => m.streamID === s.streamID)) merged.push(s);
+                });
+                return merged;
+              });
+            }
+          } else if (updateType === ZegoUpdateType.Delete) {
+            // Only a real Delete means the stream is gone. Treating any other update type as a
+            // delete tore down the render view and left a stale native tag behind.
+            remoteStreamsList.forEach((s) => {
+              if (remoteStreamIdRef.current === s.streamID) remoteStreamIdRef.current = null;
+              engineRef.current?.stopPlayingStream(s.streamID).catch(() => {});
+            });
+            setRemoteStreams((prev) => prev.filter((p) => !remoteStreamsList.some((s) => s.streamID === p.streamID)));
+            remoteLeftRef.current = true;
+          }
+        });
+
+        engine.on('roomUserUpdate', (rID: string, updateType: number, userList: ZegoUser[]) => {
+          if (updateType === ZegoUpdateType.Delete && userList.some((u) => u.userID !== stableUserID)) {
+            console.log('[Patient] Remote user left the room');
+            remoteLeftRef.current = true;
+          }
+        });
+
+        engine.on('publisherStateUpdate', (streamID: string, state: number, errorCode: number) => {
+          if (errorCode !== 0) {
+            console.error('[Patient] Publish error:', streamID, state, errorCode);
+            setLoading(false);
+            Alert.alert('Could not start camera', `Publish failed (${errorCode}).`);
+          }
+        });
+
+        engine.on('playerStateUpdate', (streamID: string, state: number, errorCode: number) => {
+          if (errorCode !== 0) {
+            console.error('[Patient] Play error:', streamID, state, errorCode);
+          }
+        });
+
+        console.log('[Patient] Joining room:', roomID, 'as', stableUserID);
+        await engine.loginRoom(
+          roomID!,
+          new ZegoUser(stableUserID!, userName),
+          new ZegoRoomConfig(0, true, zegoToken!)
+        );
+      } catch (err) {
+        console.error('[Patient] Zego init error:', err);
+        setLoading(false);
+        Alert.alert('Could not join call', 'Failed to initialize the video call engine.');
+      }
+    }
+
+    init();
+    return () => { disposed = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stableUserID, roomID, zegoToken, selfStreamID, zegoModule]);
+
+  const readTag = useCallback((ref: ZegoTextureViewType | null) => {
+    if (!ref) return null;
+    return findNodeHandle(ref as unknown as Parameters<typeof findNodeHandle>[0]) ?? null;
+  }, []);
+
+  // A ref callback (unlike onLayout) runs on every mount, so a remounted view always yields
+  // its current tag. These must be stable identities, otherwise React detaches and reattaches
+  // them on every render.
+  const attachRemoteView = useCallback((node: ZegoTextureViewType | null) => {
+    remoteViewRef.current = node;
+    setRemoteTag(readTag(node));
+  }, [readTag]);
+
+  const attachLocalView = useCallback((node: ZegoTextureViewType | null) => {
+    localViewRef.current = node;
+    setLocalTag(readTag(node));
+  }, [readTag]);
+
+  // Start local preview + publish once the room is joined and the local view is laid out
+  useEffect(() => {
+    if (!joined || localTag == null || !engineRef.current || !selfStreamID || !zegoModule || publishedRef.current) return;
+    publishedRef.current = true;
+    const { ZegoView, ZegoViewMode, ZegoVideoMirrorMode } = zegoModule;
+    const view = new ZegoView(localTag, ZegoViewMode.AspectFill, 0x000000);
+    engineRef.current.startPreview(view, undefined)
+      .then(() => engineRef.current?.setVideoMirrorMode(ZegoVideoMirrorMode.OnlyPreviewMirror, undefined).catch(() => {}))
+      .catch((e) => console.error('[Patient] Preview error:', e));
+    engineRef.current.startPublishingStream(selfStreamID, undefined, undefined)
+      .catch((e) => console.error('[Patient] Publish error:', e));
+  }, [joined, localTag, selfStreamID, zegoModule]);
+
+  // Play the remote stream once it arrives and the remote view is mounted
+  useEffect(() => {
+    const stream = remoteStreams[0];
+    if (!stream) return;
+    if (!engineRef.current || !zegoModule) return;
+    const { ZegoView, ZegoViewMode } = zegoModule;
+    remoteStreamIdRef.current = stream.streamID;
+
+    // Always read the tag from the live ref: a remounted view gets a new tag, and handing ZEGO
+    // the destroyed one fails with "Unable to find view for tag N".
+    const play = async (retriesLeft: number, first: boolean) => {
+      const liveTag = readTag(remoteViewRef.current);
+      if (liveTag == null) return;
+      if (liveTag !== remoteTag) setRemoteTag(liveTag);
+      if (first) console.log('[Patient] Playing remote stream:', stream.streamID);
+      try {
+        await engineRef.current!.startPlayingStream(stream.streamID, new ZegoView(liveTag, ZegoViewMode.AspectFill, 0x000000), undefined);
+      } catch (e) {
+        if (retriesLeft > 0 && /unable to find view/i.test(String(e))) {
+          console.warn('[Patient] Render view was replaced, retrying play:', String(e));
+          setTimeout(() => { play(retriesLeft - 1, false); }, 400);
+          return;
+        }
+        console.error('[Patient] Play error:', e);
+      }
+    };
+
+    play(2, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteStreams, remoteTag, zegoModule]);
+
+  // If the screen unmounts right after both sides cut the call, still record the completion
+  useEffect(() => {
+    return () => {
+      if (joinedRef.current && remoteLeftRef.current && !endedRef.current) {
+        endedRef.current = true;
+        reportCallEndRef.current();
+      }
+      teardown();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleLeave = () => {
+    if (navigatedRef.current) return;
+    if (joinedRef.current && remoteLeftRef.current && !endedRef.current) {
+      endedRef.current = true;
+      reportCallEndRef.current();
+    }
+    teardown();
+    goBackOnceRef.current();
+  };
+
+  const toggleMic = () => {
+    const next = !micOn;
+    setMicOn(next);
+    engineRef.current?.muteMicrophone(!next).catch((e) => console.error('[Patient] Mic error:', e));
+  };
+
+  const toggleCam = () => {
+    const next = !camOn;
+    setCamOn(next);
+    engineRef.current?.enableCamera(next, undefined).catch((e) => console.error('[Patient] Camera error:', e));
+  };
+
+  const flipCam = () => {
+    const next = !front;
+    setFront(next);
+    engineRef.current?.useFrontCamera(next, undefined).catch((e) => console.error('[Patient] Flip error:', e));
+  };
+
+  const remoteStream = remoteStreams[0];
+  const TextureView = zegoModule?.ZegoTextureView;
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Live Consultation</Text>
+        <TouchableOpacity onPress={handleLeave} style={styles.closeButton}>
+          <X size={18} color="#ef4444" />
+          <Text style={styles.closeText}>Leave</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.videoArea}>
+        {TextureView && remoteStream ? (
+          <TextureView
+            key={remoteStream.streamID}
+            ref={attachRemoteView}
+            style={styles.remoteView}
+          />
+        ) : (
+          <View style={styles.emptyRemote}>
+            <Text style={styles.emptyText}>{joined ? 'Waiting for the other party to join…' : 'Connecting…'}</Text>
+          </View>
+        )}
+
+        {/* The ZEGO view is a TextureView, which cannot round its own corners, so the
+            border radius lives on a clipping parent instead. */}
+        {TextureView && stableUserID && joined && (
+          <View style={styles.localView}>
+            <TextureView
+              ref={attachLocalView}
+              style={StyleSheet.absoluteFill}
+            />
+          </View>
+        )}
+      </View>
+
+      <View style={styles.controls}>
+        <TouchableOpacity onPress={toggleMic} style={styles.controlButton}>
+          {micOn ? <Mic size={22} color="#fff" /> : <MicOff size={22} color="#fff" />}
+          <Text style={styles.controlText}>{micOn ? 'Mic' : 'Muted'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={toggleCam} style={[styles.controlButton, camOn ? null : styles.controlOff]}>
+          {camOn ? <Camera size={22} color="#fff" /> : <CameraOff size={22} color="#fff" />}
+          <Text style={styles.controlText}>{camOn ? 'Camera' : 'Off'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={flipCam} style={styles.controlButton}>
+          <RefreshCw size={22} color="#fff" />
+          <Text style={styles.controlText}>Flip</Text>
+        </TouchableOpacity>
+      </View>
+
+      {zegoLoadFailed ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Native module not found</Text>
+          <Text style={styles.errorText}>
+            The ZEGO video engine isn't linked into this build. Rebuild the app with {'\n'}
+            npx expo run:android {'\n'}
+            and install it on the device (this will not work in Expo Go).
+          </Text>
+        </View>
+      ) : (loading || isIdentityLoading || !zegoToken || !zegoModule) ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#34d399" />
+          <Text style={styles.loadingText}>
+            {isIdentityLoading ? 'Loading profile...' : !zegoModule ? 'Initializing video engine...' : 'Connecting to secure room...'}
+          </Text>
+        </View>
+      ) : null}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#111827' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#1f2937' },
+  title: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  closeButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#7f1d1d', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  closeText: { color: '#fca5a5', fontWeight: 'bold', marginLeft: 4, fontSize: 13 },
+  videoArea: { flex: 1, backgroundColor: '#111827' },
+  remoteView: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#111827' },
+  emptyRemote: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyText: { color: '#9ca3af', fontSize: 14 },
+  localView: {
+    position: 'absolute', right: 16, bottom: 16, width: 110, height: 150,
+    borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#4b5563',
+    backgroundColor: '#1f2937',
+  },
+  controls: {
+    flexDirection: 'row', justifyContent: 'center', gap: 24,
+    paddingVertical: 20, backgroundColor: '#1f2937',
+  },
+  controlButton: { alignItems: 'center', backgroundColor: '#374151', borderRadius: 28, width: 56, height: 56, justifyContent: 'center' },
+  controlOff: { backgroundColor: '#7f1d1d' },
+  controlText: { color: '#d1d5db', fontSize: 10, marginTop: 4, textAlign: 'center' },
+  loadingContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827', zIndex: 10 },
+  loadingText: { color: '#9ca3af', marginTop: 16, fontSize: 14 },
+  errorContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827', padding: 24, zIndex: 20 },
+  errorTitle: { color: '#fca5a5', fontSize: 18, fontWeight: 'bold', marginBottom: 12 },
+  errorText: { color: '#9ca3af', fontSize: 14, textAlign: 'center', lineHeight: 22 },
+});

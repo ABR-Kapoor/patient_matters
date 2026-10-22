@@ -1,0 +1,40 @@
+# Sub-folder gitignore
+node_modules/
+.next/
+out/
+build/
+.env*.local
+.env
+.vercel
+
+# local migration copy
+neon_migration.sql
+database_master_migration.sql
+
+# PWA generated files
+/public/sw.js
+/public/sw.js.map
+/public/workbox-*.js
+/public/workbox-*.js.map
+
+public/swe-worker-*.js
+
+# Exclude local scratch, backups, dumps and nested repos
+# Temporary dumps and scratch files
+*.sql.bak
+*.bak
+*.sql
+!schema.sql
+scratch/
+tsconfig.tsbuildinfo
+
+# Mobile build, cache, and dist exclusions
+mobile/dist-web/
+mobile/dist/
+mobile/web-build/
+mobile/.expo/
+mobile/.vscode/
+mobile/.claude/
+mobile/scratch/
+mobile/*.log
+mobile/*.tsbuildinfo

@@ -1,0 +1,1089 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Noto+Sans+Devanagari:wght@100..900&display=swap");
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════
+   AURASUTRA — MEDICAL DESIGN SYSTEM
+   3-Color Palette  |  70% Deep Forest · 20% Pale Sage · 10% White Accent
+   Fonts: DM Serif Display (headings) · DM Sans (body)
+   ═══════════════════════════════════════════════════════════ */
+
+@layer base {
+  :root {
+    /* ── CORE 3-COLOR PALETTE ── */
+    /* 70% — Deep Forest (primary brand, surfaces, navs) */
+    --forest-900: #0a2e1a;
+    --forest-800: #103d22;
+    --forest-700: #16522e;
+    --forest-600: #1d6b3c;
+    --forest-500: #22854a;   /* primary action */
+    --forest-400: #2ea05a;
+
+    /* 20% — Pale Sage (backgrounds, containers, cards) */
+    --sage-50:  #f2faf5;
+    --sage-100: #e4f5ec;
+    --sage-200: #c6ebd6;
+    --sage-300: #a4dcba;
+    --sage-400: #76c597;
+
+    /* 10% — Pure White / Near-white (accents, text on dark, highlights) */
+    --white:       #ffffff;
+    --white-90:    rgba(255,255,255,0.90);
+    --white-70:    rgba(255,255,255,0.70);
+    --white-40:    rgba(255,255,255,0.40);
+    --white-15:    rgba(255,255,255,0.15);
+    --white-08:    rgba(255,255,255,0.08);
+
+    /* ── SEMANTIC ALIASES ── */
+    --primary: oklch(0.205 0 0);
+    --primary-dark:     var(--forest-700);
+    --primary-darker:   var(--forest-900);
+    --surface:          var(--sage-50);
+    --surface-low:      var(--sage-100);
+    --surface-mid:      var(--sage-200);
+    --on-primary:       var(--white);
+    --on-surface:       var(--forest-900);
+    --on-surface-muted: var(--forest-600);
+    --on-surface-faint: var(--forest-400);
+    --border-color:     var(--sage-200);
+
+    /* ── STATUS COLORS (kept minimal — using green family) ── */
+    --status-success: var(--forest-500);
+    --status-warn:    #c97c10;
+    --status-error:   #b91c1c;
+    --status-info:    var(--forest-600);
+
+    /* ── TYPOGRAPHY ── */
+    --font-display: 'DM Serif Display', Georgia, serif;
+    --font-body:    'DM Sans', 'Noto Sans Devanagari', 'Noto Sans', system-ui, sans-serif;
+    --font-hindi:   'Noto Sans Devanagari', 'DM Sans', system-ui, sans-serif;
+
+    /* ── SPACING / RADIUS ── */
+    --radius-sm:   0.5rem;
+    --radius-md:   0.875rem;
+    --radius-lg:   1.25rem;
+    --radius-xl:   1.75rem;
+    --radius-2xl:  2.5rem;
+    --radius-full: 9999px;
+
+    /* ── SHADOWS (ultra-subtle, neutral black) ── */
+    --shadow-sm:  0 1px 2px rgba(0,0,0,0.02);
+    --shadow-md:  0 2px 8px rgba(0,0,0,0.04);
+    --shadow-lg:  0 4px 16px rgba(0,0,0,0.06);
+    --shadow-xl:  0 8px 24px rgba(0,0,0,0.08);
+    --shadow-primary: 0 2px 10px rgba(0,0,0,0.05);
+
+    /* legacy aliases for backwards compat */
+    --background: oklch(1 0 0);
+    --on-background: var(--forest-900);
+    --outline: var(--forest-400);
+    --outline-variant: var(--sage-300);
+    --secondary-container: var(--sage-100);
+    --on-secondary-container: var(--forest-900);
+    --tertiary-container: var(--sage-200);
+    --surface-bright: var(--white);
+    --surface-container-lowest: var(--white);
+    --surface-container-low: var(--sage-50);
+    --surface-container: var(--sage-100);
+    --surface-container-high: var(--sage-200);
+    --surface-container-highest: var(--sage-300);
+    --primary-container: var(--forest-400);
+    --primary-fixed: var(--sage-300);
+    --on-primary-fixed: var(--forest-900);
+    --error: var(--status-error);
+    --error-container: #fee2e2;
+    --radius: 0.625rem;
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+  }
+  .theme {
+    --font-heading: var(--font-sans);
+    --font-sans: var(--font-sans);
+  }
+  .dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESET & BASE
+   ═══════════════════════════════════════════════════════════ */
+
+html { scroll-behavior: smooth !important; }
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { font-size: 16px; }
+
+  body {
+    background-color: var(--surface);
+    color: var(--on-surface);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--on-surface);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+  }
+
+  p, span, label, input, select, textarea, button {
+    font-family: var(--font-body);
+  }
+
+  /* Hindi and Devanagari script text styling */
+  [lang="hi"], .hindi-text, .devanagari {
+    font-family: 'Noto Sans Devanagari', 'Noto Sans', var(--font-body);
+    font-feature-settings: "liga" 1, "clig" 1;
+    -webkit-font-feature-settings: "liga" 1, "clig" 1;
+    text-rendering: optimizeLegibility;
+    font-smooth: antialiased;
+  }
+
+  /* Ensure Hindi names display correctly */
+  .hindi-name {
+    font-family: 'Noto Sans Devanagari', var(--font-body);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  /* Global override for all p tags inside the landing page */
+  .landing-page-wrapper p {
+    font-weight: 500 !important;
+    line-height: 20px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TYPOGRAPHY SCALE
+   ═══════════════════════════════════════════════════════════ */
+.display-lg  { font-family: var(--font-display); font-size: clamp(2.5rem,6vw,4.5rem); font-weight: 400; line-height: 1.05; letter-spacing: -0.02em; }
+.display-md  { font-family: var(--font-display); font-size: clamp(2rem,4vw,3rem);     font-weight: 400; line-height: 1.10; letter-spacing: -0.015em; }
+.headline-lg { font-family: var(--font-display); font-size: clamp(1.875rem,4vw,2.75rem);font-weight: 400; line-height: 1.2; }
+.headline-md { font-family: var(--font-display); font-size: clamp(1.375rem,2.5vw,1.75rem); font-weight: 400; line-height: 1.25; }
+.title-lg    { font-family: var(--font-body);    font-size: 1.0625rem; font-weight: 600; }
+.body-lg     { font-family: var(--font-body);    font-size: 1rem;      font-weight: 400; line-height: 1.65; }
+.body-md     { font-family: var(--font-body);    font-size: 0.875rem;  font-weight: 400; line-height: 1.55; }
+.label-lg    { font-family: var(--font-body);    font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; }
+.label-md    { font-family: var(--font-body);    font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; }
+
+/* Devanagari text - use DM Sans to prevent breaking */
+.devanagari-small,
+.devanagari-hindi {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  /* font-weight removed - inherit from parent to match English styling */
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+/* Force Devanagari font for any text containing Devanagari characters */
+body :not(:lang(hi)) .devanagari-text,
+body :not(:lang(hi)) [data-hindi],
+.hindi-text-force {
+  font-family: 'Noto Sans Devanagari', 'Noto Sans', var(--font-body) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PILL BADGE / CHIP
+   ═══════════════════════════════════════════════════════════ */
+.pill-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--sage-100);
+  color: var(--forest-700);
+  border: 1px solid var(--sage-200);
+  border-radius: var(--radius-full);
+  font-family: var(--font-body);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Icon alignment in pill badges */
+.pill-badge svg {
+  flex-shrink: 0;
+  align-self: center;
+  margin-top: -1px;
+}
+
+.pill-badge-dark {
+  background: var(--forest-500);
+  color: var(--white);
+  border-color: var(--forest-400);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CARDS
+   ═══════════════════════════════════════════════════════════ */
+.editorial-card {
+  background: var(--white);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--sage-100);
+  transition: box-shadow 240ms ease, transform 240ms ease, border-color 240ms ease;
+}
+.editorial-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--sage-200);
+}
+
+.card-base {
+  background: var(--white);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--sage-100);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 240ms ease;
+}
+.card-base:hover { box-shadow: var(--shadow-md); }
+
+.card-flat {
+  background: var(--sage-50);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-color);
+  padding: 1.5rem;
+}
+
+.card-lg {
+  background: var(--white);
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--sage-100);
+  box-shadow: var(--shadow-md);
+}
+
+.glass-card {
+  background: rgba(255,255,255,0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--white-40);
+  border-radius: var(--radius-xl);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NAVIGATION GLASS
+   ═══════════════════════════════════════════════════════════ */
+.glass-nav {
+  background: rgba(242,250,245,0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--sage-200);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BUTTONS
+   ═══════════════════════════════════════════════════════════ */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6875rem 1.625rem;
+  border-radius: var(--radius-full);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--white);
+  background: var(--forest-500);
+  border: none;
+  cursor: pointer;
+  transition: background 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+  box-shadow: var(--shadow-primary);
+  letter-spacing: 0.01em;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--forest-600);
+  box-shadow: 0 10px 32px rgba(34,133,74,0.38);
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) { transform: translateY(0); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6875rem 1.625rem;
+  border-radius: var(--radius-full);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--forest-700);
+  background: var(--sage-100);
+  border: 1px solid var(--sage-200);
+  cursor: pointer;
+  transition: background 220ms ease, border-color 220ms ease;
+}
+.btn-secondary:hover { background: var(--sage-200); border-color: var(--sage-300); }
+
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6875rem 1.625rem;
+  border-radius: var(--radius-full);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--forest-600);
+  background: transparent;
+  border: 1.5px solid var(--forest-400);
+  cursor: pointer;
+  transition: background 220ms ease, color 220ms ease;
+}
+.btn-outline:hover { background: var(--sage-50); }
+
+/* Legacy alias */
+.btn-primary-compat { @apply btn-primary; }
+
+/* ═══════════════════════════════════════════════════════════
+   INPUT FIELDS
+   ═══════════════════════════════════════════════════════════ */
+
+.sanctuary-input {
+  width: 100%;
+  padding: 0.75rem 0;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--sage-200);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  outline: none;
+  transition: border-color 220ms ease;
+  border-radius: 0;
+}
+.sanctuary-input:focus { border-bottom-color: var(--forest-500); }
+.sanctuary-input::placeholder { color: var(--forest-400); }
+
+.form-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--white);
+  border: 1.5px solid var(--sage-300);
+  border-radius: var(--radius-md);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  outline: none;
+  transition: all 220ms ease;
+}
+.form-input:focus {
+  background: var(--white);
+  border-color: var(--forest-500);
+  box-shadow: 0 0 0 3px rgba(34,133,74,0.10);
+}
+.form-input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Date and Time Input Styling */
+input[type="date"],
+input[type="time"] {
+  background-color: var(--white);
+  border: 1.5px solid var(--sage-300);
+  color: var(--on-surface);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  color: var(--forest-500);
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GRADIENTS
+   ═══════════════════════════════════════════════════════════ */
+.vitality-gradient,
+.gradient-primary {
+  background: linear-gradient(135deg, var(--forest-700) 0%, var(--forest-500) 55%, var(--forest-400) 100%);
+}
+
+.gradient-secondary {
+  background: linear-gradient(135deg, var(--sage-100) 0%, var(--sage-200) 100%);
+}
+
+.gradient-sage {
+  background: linear-gradient(135deg, var(--sage-50) 0%, var(--sage-100) 100%);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   STATUS BADGES
+   ═══════════════════════════════════════════════════════════ */
+.status-active {
+  background: var(--sage-100);
+  color: var(--forest-700);
+  padding: 0.2rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--sage-200);
+}
+
+.badge-success {
+  background: var(--sage-100);
+  color: var(--forest-700);
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--sage-200);
+}
+
+.badge-error {
+  background: #fee2e2;
+  color: var(--status-error);
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid #fecaca;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NAV ITEMS
+   ═══════════════════════════════════════════════════════════ */
+.nav-item-active {
+  background: var(--sage-100);
+  color: var(--forest-700);
+  font-weight: 600;
+  border: 1px solid var(--sage-200);
+}
+
+.nav-item-inactive {
+  color: var(--forest-600);
+}
+.nav-item-inactive:hover {
+  background: var(--sage-50);
+  color: var(--forest-700);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SECTION HEADERS
+   ═══════════════════════════════════════════════════════════ */
+.section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.section-number {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--forest-400);
+  font-style: italic;
+  min-width: 2rem;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--on-surface);
+}
+.field-label {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--forest-400);
+  margin-bottom: 0.375rem;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SHADOWS & AMBIENT
+   ═══════════════════════════════════════════════════════════ */
+.ambient-shadow    { box-shadow: var(--shadow-md); }
+.ambient-shadow-lg { box-shadow: var(--shadow-lg); }
+
+/* ═══════════════════════════════════════════════════════════
+   UTILITY COLORS
+   ═══════════════════════════════════════════════════════════ */
+.text-primary           { color: var(--forest-500); }
+.text-primary-container { color: var(--forest-400); }
+.text-surface           { color: var(--on-surface); }
+.text-surface-light     { color: var(--forest-400); }
+.text-outline           { color: var(--on-surface-muted); }
+.text-error             { color: var(--status-error); }
+
+.bg-primary            { background-color: var(--forest-500); }
+.bg-primary-container  { background-color: var(--forest-400); }
+.bg-secondary-container{ background-color: var(--sage-100); }
+.bg-surface            { background-color: var(--surface); }
+.bg-surface-container  { background-color: var(--sage-100); }
+.bg-surface-container-low { background-color: var(--sage-50); }
+.bg-surface-container-high{ background-color: var(--sage-200); }
+.bg-surface-bright     { background-color: var(--white); }
+.bg-error-container    { background-color: #fee2e2; }
+
+/* ═══════════════════════════════════════════════════════════
+   GLASS OVERLAY
+   ═══════════════════════════════════════════════════════════ */
+.glass-overlay {
+  background: rgba(242,250,245,0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ADHERENCE RING
+   ═══════════════════════════════════════════════════════════ */
+.adherence-ring {
+  filter: drop-shadow(0 0 8px rgba(34,133,74,0.35));
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOADING SPINNER
+   ═══════════════════════════════════════════════════════════ */
+.spinner {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-full);
+  border: 3px solid var(--sage-200);
+  border-top-color: var(--forest-500);
+  animation: spin 0.8s linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCROLLBAR
+   ═══════════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--sage-300); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--forest-400); }
+
+/* ═══════════════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════════════ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shimmer {
+  0%   { background-position: -800px 0; }
+  100% { background-position:  800px 0; }
+}
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34,133,74,0.30); }
+  50%       { box-shadow: 0 0 0 8px rgba(34,133,74,0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-6px); }
+}
+
+.animate-fadeUp           { animation: fadeUp 0.48s cubic-bezier(0.22,1,0.36,1) forwards; }
+.animate-fadeUp-delay-1   { animation: fadeUp 0.48s 0.08s cubic-bezier(0.22,1,0.36,1) both; }
+.animate-fadeUp-delay-2   { animation: fadeUp 0.48s 0.16s cubic-bezier(0.22,1,0.36,1) both; }
+.animate-fadeUp-delay-3   { animation: fadeUp 0.48s 0.24s cubic-bezier(0.22,1,0.36,1) both; }
+.smooth-transition        { transition: all 220ms cubic-bezier(0.22,1,0.36,1); }
+
+/* ═══════════════════════════════════════════════════════════
+   SKELETON LOADER
+   ═══════════════════════════════════════════════════════════ */
+.skeleton {
+  background: linear-gradient(90deg, var(--sage-100) 25%, var(--sage-200) 50%, var(--sage-100) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s infinite linear;
+  border-radius: var(--radius-md);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SQUIGGLE UNDERLINE
+   ═══════════════════════════════════════════════════════════ */
+.squiggle {
+  text-decoration: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--sage-300);
+  text-underline-offset: 5px;
+  text-decoration-thickness: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ACCESSIBILITY
+   ═══════════════════════════════════════════════════════════ */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border-width: 0;
+}
+.focus-ring { outline: 2px solid var(--forest-500); outline-offset: 3px; }
+
+/* ═══════════════════════════════════════════════════════════
+   LEGACY / COMPAT CLASSES
+   ═══════════════════════════════════════════════════════════ */
+.glass-card {
+  background: rgba(255,255,255,0.70);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--white-40);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Shared input/textarea styling — use on any form field */
+.form-input,
+.standard-input {
+  display: block;
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-xl);
+  border: 1.5px solid var(--sage-200);
+  background: var(--white);
+  color: var(--forest-900);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 220ms cubic-bezier(0.22,1,0.36,1), box-shadow 220ms cubic-bezier(0.22,1,0.36,1);
+}
+.form-input:focus,
+.standard-input:focus {
+  border-color: var(--forest-500);
+  box-shadow: 0 0 0 3px rgba(34,133,74,0.12);
+  background: var(--white);
+}
+.form-input:disabled,
+.standard-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--sage-100);
+}
+@media (min-width: 640px) {
+  .form-input,
+  .standard-input {
+    padding: 0.75rem 1rem;
+  }
+}
+/* ═══════════════════════════════════════════════════════════
+   CUSTOM MAGNETIC CURSOR
+   ═══════════════════════════════════════════════════════════ */
+#cursor-outer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--forest-500);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2147483647;
+  transform: translate(-50%, -50%);
+  transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1), 
+              width 0.3s ease, height 0.3s ease, 
+              border-color 0.3s ease, background 0.3s ease;
+}
+
+#cursor-inner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  background: var(--forest-500);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2147483647;
+  transform: translate(-50%, -50%);
+  transition: transform 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Hover States Logic */
+body.cursor-hover #cursor-outer {
+  width: 50px;
+  height: 50px;
+  background: var(--forest-500);
+  border-color: var(--forest-500);
+  opacity: 0.15;
+}
+
+body.cursor-hover #cursor-inner {
+  transform: translate(-50%, -50%) scale(1.5);
+  background: var(--forest-700);
+}
+
+body.cursor-image #cursor-outer {
+  width: 80px;
+  height: 80px;
+  border-color: var(--white);
+  background: rgba(255, 255, 255, 0.2);
+  mix-blend-mode: difference;
+}
+
+body.cursor-heading #cursor-outer {
+  width: 100px;
+  height: 100px;
+  background: white;
+  mix-blend-mode: difference;
+  border: none;
+  opacity: 1;
+  filter: grayscale(1);
+}
+
+/* Force hide cursor on Clerk modals when custom cursor is active */
+body:has(#cursor-outer) .cl-rootBox,
+body:has(#cursor-outer) .cl-rootBox *,
+body:has(#cursor-outer) [class*="cl-"] {
+  cursor: none !important;
+}
+
+/* Force Clerk modal below custom cursor */
+.cl-modalBackdrop,
+.cl-rootBox,
+[class*="cl-modal"] {
+  z-index: 99999 !important;
+}
+
+body.cursor-heading #cursor-inner {
+  opacity: 0;
+}
+
+/* Hide default cursor only on large screens */
+@media (pointer: fine) {
+  .custom-cursor-active {
+    cursor: none !important;
+  }
+  .custom-cursor-active a, 
+  .custom-cursor-active button {
+    cursor: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HINDI TYPOGRAPHY OVERRIDES (Must be outside @layer)
+   ═══════════════════════════════════════════════════════════ */
+/* Make all uppercase text and pill badges bold in Hindi */
+:lang(hi) *[style*="text-transform: uppercase"],
+:lang(hi) *[style*="text-transform:uppercase"],
+:lang(hi) .uppercase,
+:lang(hi) .label-md,
+:lang(hi) .pill-badge,
+:lang(hi) .pill-badge-dark,
+:lang(hi) .status-active,
+:lang(hi) .badge-success,
+:lang(hi) .badge-error,
+:lang(hi) .field-label,
+html[lang="hi"] *[style*="text-transform: uppercase"],
+html[lang="hi"] *[style*="text-transform:uppercase"],
+html[lang="hi"] .uppercase,
+html[lang="hi"] .label-md,
+html[lang="hi"] .pill-badge,
+html[lang="hi"] .pill-badge-dark,
+html[lang="hi"] .status-active,
+html[lang="hi"] .badge-success,
+html[lang="hi"] .badge-error,
+html[lang="hi"] .field-label {
+  font-weight: 700 !important;
+}
+
+/* Override Tailwind utilities for Hindi uppercase */
+html[lang="hi"] .font-normal.uppercase,
+html[lang="hi"] .font-medium.uppercase,
+html[lang="hi"] .font-semibold.uppercase,
+:lang(hi) .font-normal.uppercase,
+:lang(hi) .font-medium.uppercase,
+:lang(hi) .font-semibold.uppercase {
+  font-weight: 700 !important;
+}
+
+/* Target any heading or label text in Hindi */
+html[lang="hi"] h1.uppercase,
+html[lang="hi"] h2.uppercase,
+html[lang="hi"] h3.uppercase,
+html[lang="hi"] h4.uppercase,
+html[lang="hi"] h5.uppercase,
+html[lang="hi"] h6.uppercase,
+html[lang="hi"] p.uppercase,
+html[lang="hi"] span.uppercase,
+html[lang="hi"] div.uppercase,
+html[lang="hi"] label.uppercase,
+:lang(hi) h1.uppercase,
+:lang(hi) h2.uppercase,
+:lang(hi) h3.uppercase,
+:lang(hi) h4.uppercase,
+:lang(hi) h5.uppercase,
+:lang(hi) h6.uppercase,
+:lang(hi) p.uppercase,
+:lang(hi) span.uppercase,
+:lang(hi) div.uppercase,
+:lang(hi) label.uppercase {
+  font-weight: 700 !important;
+}
+
+/* Catch-all for any element with text-transform via class */
+html[lang="hi"] [class*="uppercase"],
+:lang(hi) [class*="uppercase"] {
+  font-weight: 700 !important;
+}
+
+/* CRITICAL: Override .devanagari-hindi font-weight in uppercase contexts */
+.pill-badge .devanagari-hindi,
+.pill-badge-dark .devanagari-hindi,
+.label-md .devanagari-hindi,
+.field-label .devanagari-hindi,
+.status-active .devanagari-hindi,
+.badge-success .devanagari-hindi,
+.badge-error .devanagari-hindi,
+.uppercase .devanagari-hindi,
+[class*="uppercase"] .devanagari-hindi {
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+}
+
+/* Fix letter-spacing for Hindi small text to prevent breaking */
+:lang(hi) .pill-badge,
+:lang(hi) .pill-badge-dark,
+:lang(hi) .label-md,
+:lang(hi) .field-label,
+:lang(hi) .status-active,
+:lang(hi) .badge-success,
+:lang(hi) .badge-error,
+html[lang="hi"] .pill-badge,
+html[lang="hi"] .pill-badge-dark,
+html[lang="hi"] .label-md,
+html[lang="hi"] .field-label,
+html[lang="hi"] .status-active,
+html[lang="hi"] .badge-success,
+html[lang="hi"] .badge-error {
+  letter-spacing: 0 !important;
+}
+
+/* Force bold for any .devanagari-hindi in uppercase parent */
+[style*="text-transform: uppercase"] .devanagari-hindi,
+[style*="text-transform:uppercase"] .devanagari-hindi {
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+}
+
+/* Double-ensure pill badges are always bold in Hindi */
+html[lang="hi"] .pill-badge,
+html[lang="hi"] .pill-badge span,
+html[lang="hi"] .pill-badge .devanagari-hindi,
+:lang(hi) .pill-badge,
+:lang(hi) .pill-badge span,
+:lang(hi) .pill-badge .devanagari-hindi {
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PRESERVE BOLD TEXT IN HINDI TRANSLATION
+   ═══════════════════════════════════════════════════════════ */
+/* Ensure all bold text remains bold in Hindi */
+:lang(hi) b,
+:lang(hi) strong,
+:lang(hi) .font-bold,
+:lang(hi) .font-semibold,
+:lang(hi) .font-black,
+:lang(hi) .font-extrabold,
+:lang(hi) [style*="font-weight: bold"],
+:lang(hi) [style*="font-weight: 600"],
+:lang(hi) [style*="font-weight: 700"],
+:lang(hi) [style*="font-weight: 800"],
+:lang(hi) [style*="font-weight: 900"],
+:lang(hi) [style*="font-weight:bold"],
+:lang(hi) [style*="font-weight:600"],
+:lang(hi) [style*="font-weight:700"],
+:lang(hi) [style*="font-weight:800"],
+:lang(hi) [style*="font-weight:900"],
+html[lang="hi"] b,
+html[lang="hi"] strong,
+html[lang="hi"] .font-bold,
+html[lang="hi"] .font-semibold,
+html[lang="hi"] .font-black,
+html[lang="hi"] .font-extrabold,
+html[lang="hi"] [style*="font-weight: bold"],
+html[lang="hi"] [style*="font-weight: 600"],
+html[lang="hi"] [style*="font-weight: 700"],
+html[lang="hi"] [style*="font-weight: 800"],
+html[lang="hi"] [style*="font-weight: 900"],
+html[lang="hi"] [style*="font-weight:bold"],
+html[lang="hi"] [style*="font-weight:600"],
+html[lang="hi"] [style*="font-weight:700"],
+html[lang="hi"] [style*="font-weight:800"],
+html[lang="hi"] [style*="font-weight:900"] {
+  font-weight: 700 !important;
+}
+
+/* Ensure bold class combinations work */
+:lang(hi) .font-bold.devanagari-hindi,
+:lang(hi) .font-semibold.devanagari-hindi,
+:lang(hi) .font-black.devanagari-hindi,
+html[lang="hi"] .font-bold.devanagari-hindi,
+html[lang="hi"] .font-semibold.devanagari-hindi,
+html[lang="hi"] .font-black.devanagari-hindi {
+  font-weight: 700 !important;
+}
+
+/* Override any .devanagari-hindi font-weight: 500 when parent is bold */
+.font-bold .devanagari-hindi,
+.font-semibold .devanagari-hindi,
+.font-black .devanagari-hindi,
+b .devanagari-hindi,
+strong .devanagari-hindi,
+[style*="font-weight: bold"] .devanagari-hindi,
+[style*="font-weight: 600"] .devanagari-hindi,
+[style*="font-weight: 700"] .devanagari-hindi,
+[style*="font-weight: 800"] .devanagari-hindi,
+[style*="font-weight: 900"] .devanagari-hindi {
+  font-weight: 700 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HINDI CRITICAL FIXES — letter-spacing & text-transform
+   These must be last to override everything above
+   ═══════════════════════════════════════════════════════════ */
+
+/* Zero letter-spacing globally for all Hindi text — Devanagari conjuncts break otherwise */
+html[lang="hi"] * {
+  letter-spacing: 0 !important;
+}
+html[lang="hi"] [class*="tracking-"] {
+  letter-spacing: 0 !important;
+}
+
+/* No text-transform — Devanagari has no uppercase/lowercase concept */
+html[lang="hi"] *,
+html[lang="hi"] .pill-badge,
+html[lang="hi"] .pill-badge *,
+html[lang="hi"] .pill-badge-dark,
+html[lang="hi"] .pill-badge-dark *,
+html[lang="hi"] .label-md,
+html[lang="hi"] .field-label,
+html[lang="hi"] .status-active,
+html[lang="hi"] .badge-success,
+html[lang="hi"] .badge-error,
+html[lang="hi"] .text-sm,
+html[lang="hi"] .text-xs,
+html[lang="hi"] [class*="uppercase"],
+html[lang="hi"] button,
+html[lang="hi"] .devanagari-hindi {
+  text-transform: none !important;
+}
+
+/* SVG icons in pill badges stay aligned */
+html[lang="hi"] .pill-badge svg,
+html[lang="hi"] .pill-badge-dark svg {
+  flex-shrink: 0;
+}
+
+/* rem-based size boosts for small text (rem avoids cascading) */
+html[lang="hi"] .pill-badge       { font-size: 0.625rem !important; }
+html[lang="hi"] .label-md         { font-size: 0.6875rem !important; }
+html[lang="hi"] .field-label      { font-size: 0.6875rem !important; }
+html[lang="hi"] .text-xs          { font-size: 0.75rem !important; }
+html[lang="hi"] .text-sm          { font-size: 0.875rem !important; }
+
+/* ── Scrollbar hide utility ── */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ECG Heartbeat Animation */
+.ecg-path {
+  stroke-dasharray: 40 320;
+  animation: travel 2s linear infinite;
+}
+
+@keyframes travel {
+  0% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -360; }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}

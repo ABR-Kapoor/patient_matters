@@ -1,0 +1,4 @@
+packages:
+  - .           # web app (patient_view root - Next.js)
+  - mobile      # expo patient app
+  - packages/*  # shared packages (added in Phase 3)
