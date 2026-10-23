@@ -15,9 +15,11 @@ const sql = globalForPostgres.sql ?? postgres({
     password: decodeURIComponent(dbUrl.password),
     // Local Docker Supabase container does NOT support TLS, cloud requires SSL
     ssl: isLocalDb ? false : { rejectUnauthorized: false },
+    // Supabase transaction pooler (port 6543 / PgBouncer) does not support prepared statements
+    prepare: false,
     max: 10,
-    idle_timeout: 30,
-    connect_timeout: 30,
+    idle_timeout: 20,
+    connect_timeout: 10,
 });
 
 if (process.env.NODE_ENV !== 'production') {
