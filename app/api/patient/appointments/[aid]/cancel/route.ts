@@ -86,32 +86,57 @@ export async function PATCH(request: NextRequest, { params }: { params: { aid: s
 
         // In-app notifications for cancellation
         try {
-            const [doctorUser] = await sql`SELECT uid FROM doctors WHERE did = ${data.did}`;
+            const [doctorUser] = await sql`
+                SELECT d.uid, u.name, u.profile_image_url 
+                FROM doctors d 
+                JOIN users u ON d.uid = u.uid 
+                WHERE d.did = ${data.did}
+                LIMIT 1
+            `;
             const [patientUser] = await sql`
-                SELECT u.name FROM patients p JOIN users u ON p.uid = u.uid WHERE p.pid = ${data.pid}
+                SELECT u.name, u.profile_image_url 
+                FROM patients p 
+                JOIN users u ON p.uid = u.uid 
+                WHERE p.pid = ${data.pid}
+                LIMIT 1
             `;
             const patientName = patientUser?.name || 'Patient';
+            const doctorName = doctorUser?.name ? `Dr. ${doctorUser.name.replace(/^Dr\.?\s+/i, '')}` : 'your doctor';
+            const doctorProfileImg = doctorUser?.profile_image_url || null;
+            const patientProfileImg = patientUser?.profile_image_url || null;
 
             await sql`
-                INSERT INTO notifications (uid, title, body, type, is_read)
+                INSERT INTO notifications (uid, title, body, type, is_read, metadata)
                 VALUES (
                     ${identity.data.uid},
                     'Appointment Cancelled',
-                    'Your appointment has been cancelled successfully.',
+                    ${`Your appointment with ${doctorName} has been cancelled successfully.`},
                     'appointment_cancelled',
-                    false
+                    false,
+                    ${JSON.stringify({
+                        image_url: doctorProfileImg,
+                        avatar_url: doctorProfileImg,
+                        doctor_name: doctorName,
+                        did: data.did,
+                    })}
                 )
             `;
 
             if (doctorUser?.uid) {
                 await sql`
-                    INSERT INTO notifications (uid, title, body, type, is_read)
+                    INSERT INTO notifications (uid, title, body, type, is_read, metadata)
                     VALUES (
                         ${doctorUser.uid},
                         'Appointment Cancelled',
                         ${`Appointment with ${patientName} on ${data.scheduled_date} was cancelled.`},
                         'appointment_cancelled',
-                        false
+                        false,
+                        ${JSON.stringify({
+                            image_url: patientProfileImg,
+                            avatar_url: patientProfileImg,
+                            patient_name: patientName,
+                            pid: data.pid,
+                        })}
                     )
                 `;
             }
