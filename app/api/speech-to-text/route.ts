@@ -1,6 +1,6 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-const DEEPGRAM_URL = 'https://api.deepgram.com/v1/listen?model=nova-3&language=multi&smart_format=true';
+const ELEVENLABS_STT_URL = 'https://api.elevenlabs.io/v1/speech-to-text';
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 const TRANSLATE_PROMPT = [
@@ -20,33 +20,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
     }
 
-    // 1. Transcribe with Deepgram (nova-3, multilingual: Hindi + English code-switching).
-    const audioBuffer = await audioFile.arrayBuffer();
-    // Deepgram doesn't accept the 'audio/m4a' label; the same AAC/MP4 bytes
-    // work fine as 'audio/mp4'.
-    const rawType = (audioFile as File).type || '';
-    const contentType = rawType === 'audio/m4a' ? 'audio/mp4' : rawType || 'audio/mp4';
-    const deepgramResponse = await fetch(DEEPGRAM_URL, {
+    const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY || process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY || '';
+    if (!elevenLabsApiKey) {
+      return NextResponse.json({ error: 'Missing ElevenLabs API key' }, { status: 500 });
+    }
+
+    // 1. Transcribe with ElevenLabs (model_id: scribe_v2)
+    const elFormData = new FormData();
+    elFormData.append('model_id', 'scribe_v2');
+    elFormData.append('file', audioFile, 'recording.m4a');
+
+    const elResponse = await fetch(ELEVENLABS_STT_URL, {
       method: 'POST',
       headers: {
-        Authorization: `Token ${process.env.DEEPGRAM_API_KEY || ''}`,
-        'Content-Type': contentType,
+        'xi-api-key': elevenLabsApiKey,
       },
-      body: audioBuffer,
+      body: elFormData,
     });
 
-    if (!deepgramResponse.ok) {
-      const errorData = await deepgramResponse.text();
-      console.error('Deepgram API Error:', errorData);
+    if (!elResponse.ok) {
+      const errorData = await elResponse.text();
+      console.error('ElevenLabs API Error:', errorData);
       return NextResponse.json(
-        { error: 'Failed to transcribe audio with Deepgram' },
-        { status: deepgramResponse.status }
+        { error: 'Failed to transcribe audio with ElevenLabs' },
+        { status: elResponse.status }
       );
     }
 
-    const deepgramData = await deepgramResponse.json();
-    const rawTranscript: string =
-      deepgramData?.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() || '';
+    const elData = await elResponse.json();
+    const rawTranscript: string = elData?.text?.trim() || '';
 
     if (!rawTranscript) {
       return NextResponse.json({ transcript: '' });
