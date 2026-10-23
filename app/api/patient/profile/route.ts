@@ -23,28 +23,33 @@ const PATIENT_COLUMNS = `
 `;
 
 export async function GET() {
-    const auth = await requirePatient();
-    if (!auth.ok) return auth.response;
+    try {
+        const auth = await requirePatient();
+        if (!auth.ok) return auth.response;
 
-    const [user] = await sql`
-        SELECT ${sql.unsafe(USER_COLUMNS)}
-        FROM users u
-        WHERE u.uid = ${auth.data.uid}
-        LIMIT 1
-    `;
+        const [user] = await sql`
+            SELECT ${sql.unsafe(USER_COLUMNS)}
+            FROM users u
+            WHERE u.uid = ${auth.data.uid}
+            LIMIT 1
+        `;
 
-    const [patient] = await sql`
-        SELECT ${sql.unsafe(PATIENT_COLUMNS)}
-        FROM patients p
-        WHERE p.pid = ${auth.data.pid}
-        LIMIT 1
-    `;
+        const [patient] = await sql`
+            SELECT ${sql.unsafe(PATIENT_COLUMNS)}
+            FROM patients p
+            WHERE p.pid = ${auth.data.pid}
+            LIMIT 1
+        `;
 
-    return NextResponse.json({
-        success: true,
-        user: user ?? null,
-        patient: patient ?? null,
-    });
+        return NextResponse.json({
+            success: true,
+            user: user ?? null,
+            patient: patient ?? null,
+        });
+    } catch (err: any) {
+        console.error('[patient/profile GET] Error:', err);
+        return NextResponse.json({ error: 'Failed to fetch profile', details: err?.message }, { status: 500 });
+    }
 }
 
 export async function PATCH(request: NextRequest) {
