@@ -49,39 +49,65 @@ export async function POST(request: NextRequest) {
             RETURNING *
         `;
 
-        // Fetch doctor's user id and patient's name to generate rich notifications
+        // Fetch doctor's user id/profile and patient's name/profile to generate rich notifications with profile images
         try {
-            const [doctorUser] = await sql`SELECT uid FROM doctors WHERE did = ${did}`;
+            const [doctorUser] = await sql`
+                SELECT d.uid, u.name, u.profile_image_url 
+                FROM doctors d 
+                JOIN users u ON d.uid = u.uid 
+                WHERE d.did = ${did}
+                LIMIT 1
+            `;
             const [patientUser] = await sql`
-                SELECT u.name FROM patients p 
+                SELECT u.name, u.profile_image_url 
+                FROM patients p 
                 JOIN users u ON p.uid = u.uid 
                 WHERE p.pid = ${identity.data.pid}
+                LIMIT 1
             `;
             const patientName = patientUser?.name || 'A patient';
+            const doctorName = doctorUser?.name ? `Dr. ${doctorUser.name.replace(/^Dr\.?\s+/i, '')}` : 'your doctor';
             const visitType = mode === 'online' ? 'Online Video Consultation' : 'In-Clinic Visit';
 
-            // Notification for Patient
+            const doctorProfileImg = doctorUser?.profile_image_url || null;
+            const patientProfileImg = patientUser?.profile_image_url || null;
+
+            // Notification for Patient (shows doctor's profile image and details)
             await sql`
-                INSERT INTO notifications (uid, title, body, type, is_read)
+                INSERT INTO notifications (uid, title, body, type, is_read, metadata)
                 VALUES (
                     ${identity.data.uid},
                     'Appointment Booked',
-                    ${`Your ${visitType} has been scheduled for ${scheduled_date} at ${scheduled_time}.`},
+                    ${`Your ${visitType} with ${doctorName} has been scheduled for ${scheduled_date} at ${scheduled_time}.`},
                     'appointment',
-                    false
+                    false,
+                    ${JSON.stringify({
+                        image_url: doctorProfileImg,
+                        avatar_url: doctorProfileImg,
+                        doctor_name: doctorName,
+                        did: did,
+                        appointment_id: appointment?.aid,
+                    })}
                 )
             `;
 
-            // Notification for Doctor
+            // Notification for Doctor (shows patient's profile image and details)
             if (doctorUser?.uid) {
                 await sql`
-                    INSERT INTO notifications (uid, title, body, type, is_read)
+                    INSERT INTO notifications (uid, title, body, type, is_read, metadata)
                     VALUES (
                         ${doctorUser.uid},
                         'New Appointment Booked',
                         ${`${patientName} has booked a ${visitType} on ${scheduled_date} at ${scheduled_time}.`},
                         'appointment',
-                        false
+                        false,
+                        ${JSON.stringify({
+                            image_url: patientProfileImg,
+                            avatar_url: patientProfileImg,
+                            patient_name: patientName,
+                            pid: identity.data.pid,
+                            appointment_id: appointment?.aid,
+                        })}
                     )
                 `;
             }
