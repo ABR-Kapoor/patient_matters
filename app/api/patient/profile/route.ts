@@ -86,57 +86,54 @@ export async function PATCH(request: NextRequest) {
             chronic_conditions: Array.isArray(patient.chronic_conditions) ? patient.chronic_conditions : (Array.isArray(patient.chronicConditions) ? patient.chronicConditions : []),
         } : null;
 
-        await sql.begin(async (tx) => {
-            // postgres.js types TransactionSql as Omit<Sql,...>, which drops the tagged-template
-            // call signature. Re-alias so queries stay type-checked.
-            const q = tx as unknown as typeof sql;
+        if (user) {
+            const setFields: string[] = [];
+            const values: any[] = [];
 
-            if (user) {
-                const setFields: string[] = [];
-                const values: any[] = [identity.uid];
-
-                if (user.name !== undefined) {
-                    setFields.push('name = $' + (values.length + 1));
-                    values.push(user.name);
-                }
-                if (user.phone !== undefined) {
-                    setFields.push('phone = $' + (values.length + 1));
-                    values.push(user.phone);
-                }
-                if (user.profile_image_url !== undefined || user.profileImageUrl !== undefined) {
-                    setFields.push('profile_image_url = $' + (values.length + 1));
-                    values.push(user.profile_image_url !== undefined ? user.profile_image_url : user.profileImageUrl);
-                }
-
-                if (setFields.length > 0) {
-                    const updateQuery = `UPDATE users SET ${setFields.join(', ')} WHERE uid = $1`;
-                    await q.unsafe(updateQuery, values);
-                }
+            if (user.name !== undefined) {
+                setFields.push('name = $' + (values.length + 1));
+                values.push(user.name);
+            }
+            if (user.phone !== undefined) {
+                setFields.push('phone = $' + (values.length + 1));
+                values.push(user.phone || null);
+            }
+            if (user.profile_image_url !== undefined || user.profileImageUrl !== undefined) {
+                setFields.push('profile_image_url = $' + (values.length + 1));
+                values.push(user.profile_image_url !== undefined ? user.profile_image_url : user.profileImageUrl);
             }
 
-            if (cleanedPatient) {
-                await q`
-                    UPDATE patients
-                    SET date_of_birth = ${cleanedPatient.date_of_birth},
-                        gender = ${cleanedPatient.gender},
-                        blood_group = ${cleanedPatient.blood_group},
-                        address_line1 = ${cleanedPatient.address_line1},
-                        address_line2 = ${cleanedPatient.address_line2},
-                        city = ${cleanedPatient.city},
-                        state = ${cleanedPatient.state},
-                        postal_code = ${cleanedPatient.postal_code},
-                        emergency_contact_name = ${cleanedPatient.emergency_contact_name},
-                        emergency_contact_relationship = ${cleanedPatient.emergency_contact_relationship},
-                        emergency_contact_phone = ${cleanedPatient.emergency_contact_phone},
-                        allergies = ${cleanedPatient.allergies},
-                        current_medications = ${cleanedPatient.current_medications},
-                        chronic_conditions = ${cleanedPatient.chronic_conditions}
-                    WHERE pid = ${identity.pid}
-                `;
+            if (setFields.length > 0) {
+                values.push(identity.uid);
+                const updateQuery = `UPDATE users SET ${setFields.join(', ')} WHERE uid = $${values.length}`;
+                await sql.unsafe(updateQuery, values);
             }
+        }
 
-            // Create in-app notification for profile update
-            await q`
+        if (cleanedPatient) {
+            await sql`
+                UPDATE patients
+                SET date_of_birth = ${cleanedPatient.date_of_birth},
+                    gender = ${cleanedPatient.gender},
+                    blood_group = ${cleanedPatient.blood_group},
+                    address_line1 = ${cleanedPatient.address_line1},
+                    address_line2 = ${cleanedPatient.address_line2},
+                    city = ${cleanedPatient.city},
+                    state = ${cleanedPatient.state},
+                    postal_code = ${cleanedPatient.postal_code},
+                    emergency_contact_name = ${cleanedPatient.emergency_contact_name},
+                    emergency_contact_relationship = ${cleanedPatient.emergency_contact_relationship},
+                    emergency_contact_phone = ${cleanedPatient.emergency_contact_phone},
+                    allergies = ${cleanedPatient.allergies},
+                    current_medications = ${cleanedPatient.current_medications},
+                    chronic_conditions = ${cleanedPatient.chronic_conditions}
+                WHERE pid = ${identity.pid}
+            `;
+        }
+
+        // Create in-app notification for profile update
+        try {
+            await sql`
                 INSERT INTO notifications (uid, title, body, type, is_read)
                 VALUES (
                     ${identity.uid},
@@ -146,7 +143,9 @@ export async function PATCH(request: NextRequest) {
                     false
                 )
             `;
-        });
+        } catch (notifErr) {
+            console.warn('[patient/profile] Notification insert failed, continuing:', notifErr);
+        }
 
         return NextResponse.json({ success: true, message: 'Profile updated successfully' });
     } catch (error: any) {
