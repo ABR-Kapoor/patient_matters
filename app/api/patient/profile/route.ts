@@ -63,21 +63,27 @@ export async function PATCH(request: NextRequest) {
         // patient. A client cannot address another account.
         const { user, patient } = await request.json();
 
+        const rawDob = patient?.date_of_birth !== undefined ? patient.date_of_birth : (patient?.dateOfBirth !== undefined ? patient.dateOfBirth : null);
+        const dob = rawDob && String(rawDob).trim() ? String(rawDob).trim() : null;
+
+        const rawGender = patient?.gender !== undefined ? patient.gender : null;
+        const gender = rawGender && String(rawGender).trim() ? String(rawGender).trim().toLowerCase() : null;
+
         const cleanedPatient = patient ? {
-            date_of_birth: patient.date_of_birth !== undefined ? patient.date_of_birth : (patient.dateOfBirth !== undefined ? patient.dateOfBirth : null),
-            gender: patient.gender !== undefined ? patient.gender.toLowerCase() : null,
-            blood_group: patient.blood_group !== undefined ? patient.blood_group : (patient.bloodGroup !== undefined ? patient.bloodGroup : null),
-            address_line1: patient.address_line1 !== undefined ? patient.address_line1 : (patient.addressLine1 !== undefined ? patient.addressLine1 : null),
-            address_line2: patient.address_line2 !== undefined ? patient.address_line2 : (patient.addressLine2 !== undefined ? patient.addressLine2 : null),
-            city: patient.city !== undefined ? patient.city : null,
-            state: patient.state !== undefined ? patient.state : null,
-            postal_code: patient.postal_code !== undefined ? patient.postal_code : (patient.postalCode !== undefined ? patient.postalCode : null),
-            emergency_contact_name: patient.emergency_contact_name !== undefined ? patient.emergency_contact_name : (patient.emergencyContactName !== undefined ? patient.emergencyContactName : null),
-            emergency_contact_relationship: patient.emergency_contact_relationship !== undefined ? patient.emergency_contact_relationship : (patient.emergencyContactRelationship !== undefined ? patient.emergencyContactRelationship : null),
-            emergency_contact_phone: patient.emergency_contact_phone !== undefined ? patient.emergency_contact_phone : (patient.emergencyContactPhone !== undefined ? patient.emergencyContactPhone : null),
-            allergies: patient.allergies !== undefined ? patient.allergies : [],
-            current_medications: patient.current_medications !== undefined ? patient.current_medications : (patient.currentMedications !== undefined ? patient.currentMedications : []),
-            chronic_conditions: patient.chronic_conditions !== undefined ? patient.chronic_conditions : (patient.chronicConditions !== undefined ? patient.chronicConditions : []),
+            date_of_birth: dob,
+            gender: gender,
+            blood_group: patient.blood_group ? String(patient.blood_group).trim() : (patient.bloodGroup ? String(patient.bloodGroup).trim() : null),
+            address_line1: patient.address_line1 || patient.addressLine1 || null,
+            address_line2: patient.address_line2 || patient.addressLine2 || null,
+            city: patient.city || null,
+            state: patient.state || null,
+            postal_code: patient.postal_code || patient.postalCode || null,
+            emergency_contact_name: patient.emergency_contact_name || patient.emergencyContactName || null,
+            emergency_contact_relationship: patient.emergency_contact_relationship || patient.emergencyContactRelationship || null,
+            emergency_contact_phone: patient.emergency_contact_phone || patient.emergencyContactPhone || null,
+            allergies: Array.isArray(patient.allergies) ? patient.allergies : [],
+            current_medications: Array.isArray(patient.current_medications) ? patient.current_medications : (Array.isArray(patient.currentMedications) ? patient.currentMedications : []),
+            chronic_conditions: Array.isArray(patient.chronic_conditions) ? patient.chronic_conditions : (Array.isArray(patient.chronicConditions) ? patient.chronicConditions : []),
         } : null;
 
         await sql.begin(async (tx) => {
