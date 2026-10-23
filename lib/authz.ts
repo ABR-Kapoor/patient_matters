@@ -35,19 +35,8 @@ export async function requireSessionUser(): Promise<AuthzResult<SessionUser>> {
     let clerkId: string | null = null;
 
     try {
-        // TEMPORARY DIAGNOSTIC -- remove together with lib/auth-debug.ts.
-        const { logAuthDebug } = await import('@/lib/auth-debug');
-        const { headers } = await import('next/headers');
-        const h = await headers();
-        await logAuthDebug('before', h.get('authorization'), null);
-        // --- end diagnostic ---
-
         const session = await auth();
         clerkId = session.userId;
-
-        // TEMPORARY DIAGNOSTIC -- remove together with lib/auth-debug.ts.
-        await logAuthDebug('after', null, clerkId);
-        // --- end diagnostic ---
     } catch {
         return { ok: false, response: fail(401, 'UNAUTHENTICATED', 'Sign in to continue.') };
     }
