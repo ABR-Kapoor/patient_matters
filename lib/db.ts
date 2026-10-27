@@ -7,11 +7,27 @@ const globalForPostgres = globalThis as unknown as {
 const dbUrl = new URL(process.env.DATABASE_URL!);
 const isLocalDb = ['localhost', '127.0.0.1', '::1'].includes(dbUrl.hostname);
 
+let host = dbUrl.hostname;
+let port = Number(dbUrl.port) || 5432;
+let username = dbUrl.username;
+
+// Supabase direct connection host (`db.<ref>.supabase.co:5432`) only has IPv6 AAAA DNS records.
+// Serverless platforms like Vercel (AWS Lambda) do not have outbound IPv6 routing, causing TCP
+// connection attempts to hang until timeout (15000ms+). Automatically use the IPv4 connection pooler.
+if (host.startsWith('db.') && host.endsWith('.supabase.co')) {
+    const projectRef = host.replace(/^db\./, '').replace(/\.supabase\.co$/, '');
+    host = 'aws-0-ap-south-1.pooler.supabase.com';
+    port = 6543;
+    if (username === 'postgres') {
+        username = `postgres.${projectRef}`;
+    }
+}
+
 const sql = globalForPostgres.sql ?? postgres({
-    host: dbUrl.hostname,
-    port: Number(dbUrl.port) || 5432,
+    host,
+    port,
     database: dbUrl.pathname.replace(/^\//, ''),
-    username: dbUrl.username,
+    username,
     password: decodeURIComponent(dbUrl.password),
     // Local Docker Supabase container does NOT support TLS, cloud requires SSL
     ssl: isLocalDb ? false : { rejectUnauthorized: false },
