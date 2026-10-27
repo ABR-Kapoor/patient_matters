@@ -45,6 +45,25 @@ export async function GET(
     // Only allow chat once appointment is confirmed or in progress (or completed)
     const canChat = ['confirmed', 'in_progress', 'completed'].includes(appointment.status);
 
+    // Mark counterpart unread messages as read
+    if (isDoctor) {
+      await sql`
+        UPDATE appointment_messages
+        SET read_at = NOW()
+        WHERE aid = ${aid}
+          AND sender_role = 'patient'
+          AND read_at IS NULL
+      `;
+    } else if (isPatient) {
+      await sql`
+        UPDATE appointment_messages
+        SET read_at = NOW()
+        WHERE aid = ${aid}
+          AND sender_role = 'doctor'
+          AND read_at IS NULL
+      `;
+    }
+
     const messages = await sql`
       SELECT 
         m.message_id,

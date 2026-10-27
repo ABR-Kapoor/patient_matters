@@ -73,11 +73,26 @@ export async function GET() {
             WHERE d.did = ANY(${doctorIds}::uuid[])
         `;
 
+        // Count unread doctor messages for each appointment
+        const appointmentIds = appointments.map(apt => apt.aid);
+        const unreadCounts = await sql`
+            SELECT aid, COUNT(*)::int as count
+            FROM appointment_messages
+            WHERE aid = ANY(${appointmentIds}::uuid[])
+              AND sender_role = 'doctor'
+              AND read_at IS NULL
+            GROUP BY aid
+        `;
+        const unreadMap = new Map((unreadCounts || []).map((r: any) => [r.aid, Number(r.count)]));
+
         // Map doctor data to appointments
         const enrichedAppointments = appointments.map(apt => {
             const doc = doctors?.find(d => d.did === apt.did);
+            const unreadCount = unreadMap.get(apt.aid) || 0;
             return {
                 ...apt,
+                unread_messages_count: unreadCount,
+                unreadMessagesCount: unreadCount,
                 // Add camelCase aliases safely with snake_case fallbacks for frontend compatibility
                 scheduledDate: apt.scheduledDate || apt.scheduled_date,
                 scheduledTime: apt.scheduledTime || apt.scheduled_time,

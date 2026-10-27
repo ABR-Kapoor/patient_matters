@@ -48,9 +48,28 @@ export async function GET() {
         }
 
         let notifications = await sql`
-            SELECT * FROM notifications
-            WHERE uid = ${auth.data.uid}
-            ORDER BY created_at DESC
+            SELECT 
+                n.*,
+                COALESCE(
+                    n.metadata->>'image_url',
+                    n.metadata->>'avatar_url',
+                    doc_u.profile_image_url
+                ) as image_url,
+                COALESCE(
+                    n.metadata->>'doctor_name',
+                    doc_u.name
+                ) as doctor_name
+            FROM notifications n
+            LEFT JOIN doctors d ON (
+                d.did = CASE 
+                    WHEN n.metadata->>'did' IS NOT NULL AND (n.metadata->>'did') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' 
+                    THEN (n.metadata->>'did')::uuid 
+                    ELSE NULL 
+                END
+            )
+            LEFT JOIN users doc_u ON doc_u.uid = d.uid
+            WHERE n.uid = ${auth.data.uid}
+            ORDER BY n.created_at DESC
             LIMIT 50
         `;
 
@@ -70,9 +89,87 @@ export async function GET() {
             `;
         }
 
+        // Enrich notifications: extract metadata object, ensure real doctor profile photo is resolved
+        const enrichedNotifications = await Promise.all(
+            (notifications || []).map(async (n: any) => {
+                let meta = n.metadata;
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch {}
+                }
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch {}
+                }
+
+                let imageUrl = meta?.image_url || meta?.avatar_url || n.image_url || null;
+                let doctorName = meta?.doctor_name || n.doctor_name || null;
+                let did = meta?.did || null;
+
+                try {
+                    // 1. If did is known, get real profile image from database
+                    if (did && (!imageUrl || !doctorName)) {
+                        const [doc] = await sql`
+                            SELECT u.name, u.profile_image_url
+                            FROM doctors d
+                            JOIN users u ON d.uid = u.uid
+                            WHERE d.did = ${did}
+                            LIMIT 1
+                        `;
+                        if (doc) {
+                            imageUrl = imageUrl || doc.profile_image_url || null;
+                            doctorName = doctorName || doc.name;
+                        }
+                    }
+
+                    // 2. Try to match doctor from notification body text: e.g. "with Dr. Ridhima Pandey"
+                    if (!imageUrl || !doctorName) {
+                        const match = String(n.body || '').match(/with\s+(Dr\.?\s+[^.]+?)(?:\s+has|\s+on|\.|$)/i);
+                        if (match && match[1]) {
+                            const searchedName = match[1].trim().replace(/^Dr\.?\s+/i, '');
+                            const [matchedDoc] = await sql`
+                                SELECT u.name, u.profile_image_url 
+                                FROM users u 
+                                JOIN doctors d ON d.uid = u.uid 
+                                WHERE u.name ILIKE ${'%' + searchedName + '%'} 
+                                LIMIT 1
+                            `;
+                            if (matchedDoc) {
+                                imageUrl = imageUrl || matchedDoc.profile_image_url || null;
+                                doctorName = doctorName || matchedDoc.name;
+                            }
+                        }
+                    }
+
+                    // 3. Fallback for appointment notifications: match latest appointment for this patient
+                    if (!imageUrl && (n.type === 'appointment' || String(n.title).toLowerCase().includes('appointment'))) {
+                        const [apt] = await sql`
+                            SELECT u.name as doctor_name, u.profile_image_url 
+                            FROM appointments a
+                            JOIN doctors d ON a.did = d.did
+                            JOIN users u ON d.uid = u.uid
+                            WHERE a.pid = ${auth.data.pid}
+                            ORDER BY a.created_at DESC
+                            LIMIT 1
+                        `;
+                        if (apt) {
+                            imageUrl = imageUrl || apt.profile_image_url || null;
+                            doctorName = doctorName || apt.doctor_name;
+                        }
+                    }
+                } catch (fallbackErr) {
+                    console.error('Error resolving notification doctor image:', fallbackErr);
+                }
+
+                return {
+                    ...n,
+                    image_url: imageUrl,
+                    doctor_name: doctorName,
+                };
+            })
+        );
+
         return NextResponse.json({
             success: true,
-            notifications: notifications || [],
+            notifications: enrichedNotifications || [],
         });
     } catch (error) {
         console.error('Error fetching notifications:', error);
