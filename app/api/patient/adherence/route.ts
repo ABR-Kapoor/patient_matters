@@ -58,8 +58,9 @@ export async function GET(request: NextRequest) {
                 }
             }
 
+            const { prescription_medicines: _unused, ...rest } = record;
             return {
-                ...record,
+                ...rest,
                 doctorName,
                 ...medicineDetails
             };
@@ -183,8 +184,9 @@ export async function GET(request: NextRequest) {
                 finalData = finalData.map((record: any) => {
                     const meds = Array.isArray(record.prescription_medicines) ? record.prescription_medicines : [];
                     const medInfo = meds.find((m: any) => m.name === record.medicine_name);
+                    const { prescription_medicines: _unused, ...rest } = record;
                     return {
-                        ...record,
+                        ...rest,
                         doctorName: record.doctor_name || 'Unknown Doctor',
                         ...(medInfo ? { dosage: medInfo.dosage, frequency: medInfo.frequency, notes: medInfo.notes } : {})
                     };
