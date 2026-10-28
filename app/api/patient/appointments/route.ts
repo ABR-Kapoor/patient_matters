@@ -141,7 +141,9 @@ export async function GET() {
                         name: doc.name, 
                         email: doc.email, 
                         phone: doc.phone, 
-                        profileImageUrl: doc.profileImageUrl || doc.profile_image_url 
+                        profileImageUrl: (doc.profileImageUrl || doc.profile_image_url)?.startsWith('data:') && (doc.profileImageUrl || doc.profile_image_url)?.length > 2048
+                            ? null
+                            : (doc.profileImageUrl || doc.profile_image_url) 
                     }
                 } : null
             };
