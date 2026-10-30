@@ -19,7 +19,14 @@ export async function GET(
     // Verify appointment access (either the doctor or the patient on this appointment)
     const [appointment] = await sql`
       SELECT 
-        a.aid, a.status, a.scheduled_time,
+        a.aid, a.status, a.mode, a.scheduled_date, a.scheduled_time,
+        (((a.scheduled_date + a.scheduled_time) AT TIME ZONE 'Asia/Kolkata') - interval '10 minutes') AS call_opens_at,
+        (
+          a.mode = 'online'
+          AND a.status IN ('confirmed', 'in_progress')
+          AND NOW() >= (((a.scheduled_date + a.scheduled_time) AT TIME ZONE 'Asia/Kolkata') - interval '10 minutes')
+        ) AS call_available,
+        NOW() AS server_time,
         p.pid, pu.uid as patient_uid, pu.name as patient_name, pu.profile_image_url as patient_image,
         d.did, du.uid as doctor_uid, du.name as doctor_name, du.profile_image_url as doctor_image
       FROM appointments a
@@ -99,7 +106,12 @@ export async function GET(
         doctorImage: appointment.doctor_image,
         doctor_image: appointment.doctor_image,
         doctorAvatarUrl: appointment.doctor_image,
+        mode: appointment.mode,
+        scheduledDate: appointment.scheduled_date,
         scheduledTime: appointment.scheduled_time,
+        callAvailable: Boolean(appointment.call_available),
+        callOpensAt: appointment.call_opens_at,
+        serverTime: appointment.server_time,
       },
       messages,
     });

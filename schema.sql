@@ -787,6 +787,32 @@ CREATE TABLE public.appointments (
 
 
 --
+-- Name: call_sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.call_sessions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    aid uuid NOT NULL,
+    patient_uid uuid NOT NULL,
+    doctor_uid uuid NOT NULL,
+    initiator_uid uuid NOT NULL,
+    initiator_role character varying(10) NOT NULL,
+    status character varying(20) DEFAULT 'ringing'::character varying NOT NULL,
+    ring_expires_at timestamp with time zone NOT NULL,
+    accepted_at timestamp with time zone,
+    ended_at timestamp with time zone,
+    ended_by_uid uuid,
+    end_reason character varying(40),
+    created_at timestamp with time zone DEFAULT NOW() NOT NULL,
+    updated_at timestamp with time zone DEFAULT NOW() NOT NULL,
+    CONSTRAINT call_sessions_pkey PRIMARY KEY (id),
+    CONSTRAINT call_sessions_initiator_role_check CHECK (((initiator_role)::text = ANY (ARRAY[('patient'::character varying)::text, ('doctor'::character varying)::text]))),
+    CONSTRAINT call_sessions_participants_check CHECK ((patient_uid <> doctor_uid)),
+    CONSTRAINT call_sessions_status_check CHECK (((status)::text = ANY (ARRAY[('ringing'::character varying)::text, ('active'::character varying)::text, ('rejected'::character varying)::text, ('cancelled'::character varying)::text, ('expired'::character varying)::text, ('ended'::character varying)::text])))
+);
+
+
+--
 -- Name: clinics; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1875,6 +1901,41 @@ CREATE INDEX idx_appointments_status ON public.appointments USING btree (status)
 
 
 --
+-- Name: call_sessions_one_open_per_appointment; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX call_sessions_one_open_per_appointment ON public.call_sessions USING btree (aid) WHERE ((status)::text = ANY (ARRAY[('ringing'::character varying)::text, ('active'::character varying)::text]));
+
+
+--
+-- Name: call_sessions_one_open_per_patient; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX call_sessions_one_open_per_patient ON public.call_sessions USING btree (patient_uid) WHERE ((status)::text = ANY (ARRAY[('ringing'::character varying)::text, ('active'::character varying)::text]));
+
+
+--
+-- Name: call_sessions_one_open_per_doctor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX call_sessions_one_open_per_doctor ON public.call_sessions USING btree (doctor_uid) WHERE ((status)::text = ANY (ARRAY[('ringing'::character varying)::text, ('active'::character varying)::text]));
+
+
+--
+-- Name: idx_call_sessions_open_expiry; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_call_sessions_open_expiry ON public.call_sessions USING btree (ring_expires_at) WHERE ((status)::text = 'ringing'::text);
+
+
+--
+-- Name: idx_call_sessions_participant_recent; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_call_sessions_participant_recent ON public.call_sessions USING btree (patient_uid, doctor_uid, updated_at DESC);
+
+
+--
 -- Name: idx_availability_active; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2527,6 +2588,46 @@ ALTER TABLE ONLY public.appointments
 
 ALTER TABLE ONLY public.appointments
     ADD CONSTRAINT appointments_rescheduled_from_fkey FOREIGN KEY (rescheduled_from) REFERENCES public.appointments(aid) ON DELETE SET NULL;
+
+
+--
+-- Name: call_sessions call_sessions_aid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.call_sessions
+    ADD CONSTRAINT call_sessions_aid_fkey FOREIGN KEY (aid) REFERENCES public.appointments(aid) ON DELETE CASCADE;
+
+
+--
+-- Name: call_sessions call_sessions_patient_uid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.call_sessions
+    ADD CONSTRAINT call_sessions_patient_uid_fkey FOREIGN KEY (patient_uid) REFERENCES public.users(uid) ON DELETE CASCADE;
+
+
+--
+-- Name: call_sessions call_sessions_doctor_uid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.call_sessions
+    ADD CONSTRAINT call_sessions_doctor_uid_fkey FOREIGN KEY (doctor_uid) REFERENCES public.users(uid) ON DELETE CASCADE;
+
+
+--
+-- Name: call_sessions call_sessions_initiator_uid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.call_sessions
+    ADD CONSTRAINT call_sessions_initiator_uid_fkey FOREIGN KEY (initiator_uid) REFERENCES public.users(uid) ON DELETE CASCADE;
+
+
+--
+-- Name: call_sessions call_sessions_ended_by_uid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.call_sessions
+    ADD CONSTRAINT call_sessions_ended_by_uid_fkey FOREIGN KEY (ended_by_uid) REFERENCES public.users(uid) ON DELETE SET NULL;
 
 
 --
