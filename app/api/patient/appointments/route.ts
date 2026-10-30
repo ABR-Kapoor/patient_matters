@@ -34,6 +34,13 @@ export async function GET() {
             SELECT a.*, ft.amount as paid_amount, ft.platform_fee_applied,
                    rr.refund_id, rr.amount as refund_amount, rr.status as refund_status,
                    rr.reason as refund_reason, rr.refund_type,
+                   (((a.scheduled_date + a.scheduled_time) AT TIME ZONE 'Asia/Kolkata') - interval '10 minutes') AS call_opens_at,
+                   (
+                       a.mode = 'online'
+                       AND a.status IN ('confirmed', 'in_progress')
+                       AND NOW() >= (((a.scheduled_date + a.scheduled_time) AT TIME ZONE 'Asia/Kolkata') - interval '10 minutes')
+                   ) AS call_available,
+                   NOW() AS server_time,
                    (rr.refund_id IS NOT NULL) as refund_requested,
                    r.review_id as my_review_id,
                    r.rating as my_review_rating,
@@ -113,6 +120,9 @@ export async function GET() {
                 refundStatus: apt.refund_status,
                 refundReason: apt.refund_reason,
                 refundType: apt.refund_type,
+                callAvailable: Boolean(apt.call_available),
+                callOpensAt: apt.call_opens_at,
+                serverTime: apt.server_time,
                 // AURASUTRA-REVIEWS:appointments_my_review_shape
                 // null means "not rated yet"; the review is present even if the
                 // appointment was later reopened, so the client can offer an edit.

@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
-import { requirePatient, loadAppointmentForToken } from '@/lib/authz';
+import { requirePatient } from '@/lib/authz';
+import { callErrorResponse, getActiveSessionForToken } from '@/lib/callSessions';
 import { generateToken04 } from '../../../../lib/zegoServerAssistant';
 
 const ROOM_PREFIX = 'appointment_';
@@ -8,7 +9,7 @@ export async function POST(req: Request) {
     const auth = await requirePatient();
     if (!auth.ok) return auth.response;
 
-    const { clerkId, pid, name } = auth.data;
+    const { clerkId, uid, name } = auth.data;
 
     try {
         const body = await req.json();
@@ -25,12 +26,10 @@ export async function POST(req: Request) {
         }
 
         const aid = roomId.slice(ROOM_PREFIX.length);
-        const appointment = await loadAppointmentForToken(aid);
-        if (!appointment) {
-            return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
-        }
-        if (appointment.pid !== pid) {
-            return NextResponse.json({ success: false, error: 'You are not a participant in this consultation' }, { status: 403 });
+        const active = await getActiveSessionForToken({ uid, role: 'patient' }, aid);
+        if (!active.ok) {
+            const error = callErrorResponse(active);
+            return NextResponse.json(error.body, { status: error.status });
         }
 
         const appId = parseInt(process.env.ZEGO_APP_ID || process.env.NEXT_PUBLIC_ZEGO_APP_ID || '', 10);

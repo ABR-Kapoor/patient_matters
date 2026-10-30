@@ -3,6 +3,7 @@ import sql from '@/lib/db';
 import { sendEmail } from '@/lib/shared/notifications/email';
 import { generateAppointmentCancelledForDoctorEmail } from '@/lib/shared/notifications/templates';
 import { requirePatient, requireOwnAppointment } from '@/lib/authz';
+import { closeOpenCallForAppointment } from '@/lib/callSessions';
 
 export async function PATCH(request: NextRequest, { params }: { params: { aid: string } }) {
     const identity = await requirePatient();
@@ -26,11 +27,13 @@ export async function PATCH(request: NextRequest, { params }: { params: { aid: s
             return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
         }
 
+        const callSession = await closeOpenCallForAppointment(aid, 'appointment_cancelled');
+        const effectiveCallStart = callSession.acceptedAt || existing.call_started_at;
         const endedAt = new Date().toISOString();
         let durationMinutes: number | null = null;
 
-        if (existing.call_started_at) {
-            const rawMinutes = (new Date(endedAt).getTime() - new Date(existing.call_started_at).getTime()) / 60000;
+        if (effectiveCallStart) {
+            const rawMinutes = (new Date(endedAt).getTime() - new Date(effectiveCallStart).getTime()) / 60000;
             // duration_minutes / call_duration_minutes are integer columns. A
             // fractional value ("5833.0329...") makes Postgres abort the whole
             // UPDATE with `invalid input syntax for type integer`, so the
@@ -111,14 +114,15 @@ export async function PATCH(request: NextRequest, { params }: { params: { aid: s
                     ${identity.data.uid},
                     'Appointment Cancelled',
                     ${`Your appointment with ${doctorName} has been cancelled successfully.`},
-                    'appointment_cancelled',
+                    'appointment',
                     false,
                     ${JSON.stringify({
                         image_url: doctorProfileImg,
                         avatar_url: doctorProfileImg,
                         doctor_name: doctorName,
                         did: data.did,
-                    })}
+                        appointment_id: aid,
+                    })}::jsonb
                 )
             `;
 
@@ -129,14 +133,15 @@ export async function PATCH(request: NextRequest, { params }: { params: { aid: s
                         ${doctorUser.uid},
                         'Appointment Cancelled',
                         ${`Appointment with ${patientName} on ${data.scheduled_date} was cancelled.`},
-                        'appointment_cancelled',
+                        'appointment',
                         false,
                         ${JSON.stringify({
                             image_url: patientProfileImg,
                             avatar_url: patientProfileImg,
                             patient_name: patientName,
                             pid: data.pid,
-                        })}
+                            appointment_id: aid,
+                        })}::jsonb
                     )
                 `;
             }
