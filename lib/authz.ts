@@ -31,7 +31,7 @@ function fail(status: number, error: string, message: string, extra?: Record<str
  * hot paths. `auth()` resolves both the web session cookie and the mobile
  * `Authorization: Bearer` token, because `clerkMiddleware` matches `/api`.
  */
-export async function requireSessionUser(): Promise<AuthzResult<SessionUser>> {
+async function resolveClerkId(): Promise<string | null> {
     let clerkId: string | null = null;
 
     try {
@@ -65,6 +65,11 @@ export async function requireSessionUser(): Promise<AuthzResult<SessionUser>> {
         }
     }
 
+    return clerkId;
+}
+
+export async function requireSessionUser(): Promise<AuthzResult<SessionUser>> {
+    const clerkId = await resolveClerkId();
     if (!clerkId) {
         return { ok: false, response: fail(401, 'UNAUTHENTICATED', 'Sign in to continue.') };
     }
@@ -102,26 +107,36 @@ export async function requireSessionUser(): Promise<AuthzResult<SessionUser>> {
  * client-supplied `?uid=` is never trusted.
  */
 export async function requirePatient(): Promise<AuthzResult<PatientIdentity>> {
-    const session = await requireSessionUser();
-    if (!session.ok) return session;
+    const clerkId = await resolveClerkId();
+    if (!clerkId) {
+        return { ok: false, response: fail(401, 'UNAUTHENTICATED', 'Sign in to continue.') };
+    }
 
-    if (session.data.role !== 'patient') {
+    const [user] = await sql`
+        SELECT u.uid, u.role, u.email, u.name, p.pid
+        FROM users u
+        LEFT JOIN patients p ON p.uid = u.uid
+        WHERE u.auth_id = ${clerkId}
+        LIMIT 1
+    `;
+
+    if (!user) {
+        return {
+            ok: false,
+            response: fail(403, 'NOT_PROVISIONED', 'Account not found. Please sign in again.'),
+        };
+    }
+
+    if (user.role !== 'patient') {
         return {
             ok: false,
             response: fail(403, 'ROLE_MISMATCH', 'This account is not registered as a patient.', {
-                role: session.data.role,
+                role: user.role,
             }),
         };
     }
 
-    const [patient] = await sql`
-        SELECT pid
-        FROM patients
-        WHERE uid = ${session.data.uid}
-        LIMIT 1
-    `;
-
-    if (!patient) {
+    if (!user.pid) {
         return {
             ok: false,
             response: fail(403, 'NOT_PROVISIONED', 'Patient profile not found. Please sign in again.'),
@@ -131,11 +146,11 @@ export async function requirePatient(): Promise<AuthzResult<PatientIdentity>> {
     return {
         ok: true,
         data: {
-            clerkId: session.data.clerkId,
-            uid: session.data.uid,
-            pid: patient.pid,
-            email: session.data.email,
-            name: session.data.name,
+            clerkId,
+            uid: user.uid,
+            pid: user.pid,
+            email: user.email ?? null,
+            name: user.name ?? null,
         },
     };
 }

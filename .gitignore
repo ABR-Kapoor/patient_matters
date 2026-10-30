@@ -25,6 +25,7 @@ public/swe-worker-*.js
 *.bak
 *.sql
 !schema.sql
+!migrations/*.sql
 scratch/
 tsconfig.tsbuildinfo
 

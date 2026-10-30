@@ -33,7 +33,7 @@ const sql = globalForPostgres.sql ?? postgres({
     ssl: isLocalDb ? false : { rejectUnauthorized: false },
     // Supabase transaction pooler (port 6543 / PgBouncer) does not support prepared statements
     prepare: false,
-    max: 10,
+    max: 5,
     idle_timeout: 20,
     connect_timeout: 10,
 });
