@@ -66,30 +66,30 @@ export async function GET() {
 
         // Get all unique doctor IDs
         const doctorIds = [...new Set(appointments.map(apt => apt.did))];
-
-        // Fetch doctor details with user info. The clinic address columns are
-        // included so in-clinic appointments can offer a directions link;
-        // address_line2 may carry a JSON coordinate payload.
-        const doctors = await sql`
-            SELECT d.did, d.uid, d.specialization, d.consultation_fee,
-                   d.clinic_name, d.address_line1, d.address_line2,
-                   d.city, d.state, d.postal_code,
-                   u.name, u.email, u.phone, u.profile_image_url
-            FROM doctors d
-            JOIN users u ON d.uid = u.uid
-            WHERE d.did = ANY(${doctorIds}::uuid[])
-        `;
-
-        // Count unread doctor messages for each appointment
         const appointmentIds = appointments.map(apt => apt.aid);
-        const unreadCounts = await sql`
-            SELECT aid, COUNT(*)::int as count
-            FROM appointment_messages
-            WHERE aid = ANY(${appointmentIds}::uuid[])
-              AND sender_role = 'doctor'
-              AND read_at IS NULL
-            GROUP BY aid
-        `;
+
+        // Fetch doctor details and unread counts together. These are independent
+        // reads, so running them sequentially doubled cross-region DB latency.
+        const [doctors, unreadCounts] = await Promise.all([
+            sql`
+                SELECT d.did, d.uid, d.specialization, d.consultation_fee,
+                       d.clinic_name, d.address_line1, d.address_line2,
+                       d.city, d.state, d.postal_code,
+                       u.name, u.email, u.phone, u.profile_image_url
+                FROM doctors d
+                JOIN users u ON d.uid = u.uid
+                WHERE d.did = ANY(${doctorIds}::uuid[])
+            `,
+            // Count unread doctor messages for each appointment
+            sql`
+                SELECT aid, COUNT(*)::int as count
+                FROM appointment_messages
+                WHERE aid = ANY(${appointmentIds}::uuid[])
+                  AND sender_role = 'doctor'
+                  AND read_at IS NULL
+                GROUP BY aid
+            `,
+        ]);
         const unreadMap = new Map((unreadCounts || []).map((r: any) => [r.aid, Number(r.count)]));
 
         // Map doctor data to appointments

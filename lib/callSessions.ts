@@ -213,19 +213,6 @@ function contextIsCallable(context: CallContext): boolean {
     );
 }
 
-async function expireOwnStaleRinging(txOrSql: any, uid: string): Promise<void> {
-    await txOrSql`
-        UPDATE call_sessions
-        SET status = 'expired',
-            ended_at = COALESCE(ended_at, NOW()),
-            end_reason = COALESCE(end_reason, 'no_answer'),
-            updated_at = NOW()
-        WHERE status = 'ringing'
-          AND ring_expires_at <= NOW()
-          AND (patient_uid = ${uid} OR doctor_uid = ${uid})
-    `;
-}
-
 async function expireParticipantStaleRinging(tx: any, patientUid: string, doctorUid: string): Promise<void> {
     await tx`
         UPDATE call_sessions
@@ -243,18 +230,30 @@ async function expireParticipantStaleRinging(tx: any, patientUid: string, doctor
 }
 
 async function reconcileOpenSessions(uid: string): Promise<void> {
-    await expireOwnStaleRinging(sql, uid);
     await sql`
-        UPDATE call_sessions cs
-        SET status = 'ended',
-            ended_at = COALESCE(cs.ended_at, NOW()),
-            end_reason = COALESCE(cs.end_reason, 'appointment_closed'),
-            updated_at = NOW()
-        FROM appointments a
-        WHERE cs.aid = a.aid
-          AND cs.status IN ('ringing', 'active')
-          AND (cs.patient_uid = ${uid} OR cs.doctor_uid = ${uid})
-          AND (a.mode <> 'online' OR a.status NOT IN ('confirmed', 'in_progress'))
+        WITH expired AS (
+            UPDATE call_sessions
+            SET status = 'expired',
+                ended_at = COALESCE(ended_at, NOW()),
+                end_reason = COALESCE(end_reason, 'no_answer'),
+                updated_at = NOW()
+            WHERE status = 'ringing'
+              AND ring_expires_at <= NOW()
+              AND (patient_uid = ${uid} OR doctor_uid = ${uid})
+        ), closed AS (
+            UPDATE call_sessions cs
+            SET status = 'ended',
+                ended_at = COALESCE(cs.ended_at, NOW()),
+                end_reason = COALESCE(cs.end_reason, 'appointment_closed'),
+                updated_at = NOW()
+            FROM appointments a
+            WHERE cs.aid = a.aid
+              AND cs.status IN ('ringing', 'active')
+              AND (cs.status = 'active' OR cs.ring_expires_at > NOW())
+              AND (cs.patient_uid = ${uid} OR cs.doctor_uid = ${uid})
+              AND (a.mode <> 'online' OR a.status NOT IN ('confirmed', 'in_progress'))
+        )
+        SELECT 1
     `;
 }
 
@@ -303,18 +302,69 @@ async function loadRecentTerminal(db: any, uid: string): Promise<CallSessionRow 
     return (session as CallSessionRow) ?? null;
 }
 
-export async function getActiveCallState(uid: string): Promise<ActiveCallState> {
-    await reconcileOpenSessions(uid);
+type ActiveOrRecentRow = CallSessionRow & {
+    is_open: boolean;
+};
 
-    const [clock] = await sql`SELECT NOW() AS now`;
-    const session = await loadOpenSessionForUser(sql, uid);
-    const context = session ? await loadCallContext(session.aid) : null;
-    const recent = session ? null : await loadRecentTerminal(sql, uid);
+async function loadActiveOrRecent(uid: string): Promise<{
+    serverTime: string;
+    session: ActiveOrRecentRow | null;
+}> {
+    const [row] = await sql`
+        WITH clock AS (SELECT NOW() AS server_time)
+        SELECT clock.server_time, cs.*,
+               (cs.status IN ('ringing', 'active')) AS is_open
+        FROM clock
+        LEFT JOIN LATERAL (
+            SELECT *
+            FROM call_sessions
+            WHERE (
+                status IN ('ringing', 'active')
+                OR (
+                    status IN ('rejected', 'cancelled', 'expired', 'ended')
+                    AND updated_at >= NOW() - interval '90 seconds'
+                )
+            )
+              AND (patient_uid = ${uid} OR doctor_uid = ${uid})
+            ORDER BY (status IN ('ringing', 'active')) DESC, updated_at DESC
+            LIMIT 1
+        ) cs ON TRUE
+    `;
+    const { server_time, ...session } = row;
+    return {
+        serverTime: iso(server_time) as string,
+        session: session.id ? (session as ActiveOrRecentRow) : null,
+    };
+}
+
+export async function getActiveCallState(uid: string): Promise<ActiveCallState> {
+    const { serverTime, session: first } = await loadActiveOrRecent(uid);
+
+    if (first?.is_open) {
+        await reconcileOpenSessions(uid);
+        const session = await loadOpenSessionForUser(sql, uid);
+        if (session) {
+            const context = await loadCallContext(session.aid);
+            if (context) {
+                return {
+                    serverTime,
+                    session: toSessionView(session, context, uid),
+                    recentTerminal: null,
+                };
+            }
+        }
+    }
+
+    const recent = first && !first.is_open
+        ? first
+        : first?.is_open
+            ? await loadRecentTerminal(sql, uid)
+            : null;
     const recentContext = recent ? await loadCallContext(recent.aid) : null;
 
     return {
-        serverTime: iso(clock.now) as string,
-        session: session && context ? toSessionView(session, context, uid) : null,
+        serverTime,
+        session: null,
         recentTerminal: recent && recentContext ? toSessionView(recent, recentContext, uid) : null,
     };
 }

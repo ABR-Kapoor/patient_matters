@@ -3,6 +3,7 @@
     "outputDirectory": ".next",
     "installCommand": "npm install",
     "framework": "nextjs",
+    "regions": ["bom1"],
     "rewrites": [
         {
             "source": "/(.*)",
