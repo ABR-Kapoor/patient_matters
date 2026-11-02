@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { requirePatient, type PatientIdentity } from '@/lib/authz';
+import { createNotificationOnce, NOTIFICATION_URLS } from '@/lib/shared/notifications/inApp';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -133,16 +134,15 @@ export async function PATCH(request: NextRequest) {
 
         // Create in-app notification for profile update
         try {
-            await sql`
-                INSERT INTO notifications (uid, title, body, type, is_read)
-                VALUES (
-                    ${identity.uid},
-                    'Profile Updated',
-                    'Your personal and clinical profile information was successfully updated.',
-                    'profile',
-                    false
-                )
-            `;
+            await createNotificationOnce(sql, {
+                uid: identity.uid,
+                title: 'Profile Updated',
+                body: 'Your personal and clinical profile information was successfully updated.',
+                type: 'general',
+                actionUrl: NOTIFICATION_URLS.profile,
+                eventKey: `profile:${identity.uid}:${Date.now()}`,
+                push: false,
+            });
         } catch (notifErr) {
             console.warn('[patient/profile] Notification insert failed, continuing:', notifErr);
         }

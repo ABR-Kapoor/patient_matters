@@ -4,6 +4,7 @@ import { generateAppointmentCreatedEmail, generatePrescriptionCreatedEmail, gene
 import { formatDate } from '@/lib/formatDate';
 import sql from '@/lib/db';
 import { requireSessionUser, maskAccountNumber } from '@/lib/authz';
+import { notifyOnce, NOTIFICATION_URLS } from '@/lib/shared/notifications/inApp';
 import { timingSafeEqual } from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -229,6 +230,37 @@ export async function POST(request: NextRequest) {
             });
             const doctorEmailResult = await sendEmail({ to: doctor.user.email, subject: `Prescription Created for ${patient.user.name} - AuraSutra`, html: doctorEmailHtml });
             results.push({ recipient: 'doctor', email: doctor.user.email, ...doctorEmailResult });
+
+            try {
+                const [prescription] = await sql`
+                    SELECT prescription_id
+                    FROM prescriptions
+                    WHERE pid = ${patientId}
+                      AND did = ${doctorId}
+                      AND sent_to_patient = true
+                    ORDER BY COALESCE(sent_at, created_at) DESC
+                    LIMIT 1
+                `;
+                if (prescription?.prescription_id) {
+                    const doctorName = `Dr. ${String(doctor.user.name || 'Doctor').replace(/^Dr\.?\s+/i, '')}`;
+                    await notifyOnce({
+                        uid: patient.user.uid,
+                        title: `New Prescription from ${doctorName}`,
+                        body: `Your prescription for ${diagnosis || 'your consultation'} is ready.`,
+                        type: 'prescription',
+                        actionUrl: NOTIFICATION_URLS.prescriptions,
+                        eventKey: `prescription:${prescription.prescription_id}:sent`,
+                        metadata: {
+                            prescription_id: prescription.prescription_id,
+                            doctor_name: doctorName,
+                            image_url: doctor.user.profileImageUrl || null,
+                            avatar_url: doctor.user.profileImageUrl || null,
+                        },
+                    });
+                }
+            } catch (notifErr) {
+                console.error('Prescription in-app notification failed:', notifErr);
+            }
         }
 
         else if (type === 'payment_completed') {
@@ -295,6 +327,28 @@ export async function POST(request: NextRequest) {
                     ...adminEmailResults[index],
                 })),
             );
+
+            if (transactionId) {
+                try {
+                    const doctorName = `Dr. ${String(doctor.user.name || 'Doctor').replace(/^Dr\.?\s+/i, '')}`;
+                    await notifyOnce({
+                        uid: patient.user.uid,
+                        title: 'Payment Successful',
+                        body: `INR ${Number(amount || 0).toFixed(2)} paid for your consultation with ${doctorName}.`,
+                        type: 'payment',
+                        actionUrl: NOTIFICATION_URLS.appointments,
+                        eventKey: `payment:${transactionId}:paid`,
+                        metadata: {
+                            razorpay_payment_id: transactionId,
+                            doctor_name: doctorName,
+                            image_url: doctor.user.profileImageUrl || null,
+                            avatar_url: doctor.user.profileImageUrl || null,
+                        },
+                    });
+                } catch (notifErr) {
+                    console.error('Payment in-app notification failed:', notifErr);
+                }
+            }
         }
 
         else {

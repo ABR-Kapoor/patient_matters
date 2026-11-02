@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { requirePatient } from '@/lib/authz';
+import {
+    createNotificationOnce,
+    NOTIFICATION_URLS,
+} from '@/lib/shared/notifications/inApp';
+import {
+    syncDueDoseNotifications,
+    syncLifecycleNotifications,
+} from '@/lib/shared/notifications/sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,42 +17,11 @@ export async function GET() {
         const auth = await requirePatient();
         if (!auth.ok) return auth.response;
 
-        // Sync active and due medication doses into in-app notifications
         try {
-            const todayStr = new Date().toISOString().split('T')[0];
-            const dueDoses = await sql`
-                SELECT ma.adherence_id, ma.medicine_name, ma.scheduled_time, ma.scheduled_date
-                FROM medication_adherence ma
-                WHERE ma.pid = ${auth.data.pid}
-                  AND ma.scheduled_date = ${todayStr}
-                  AND (ma.is_taken IS FALSE OR ma.is_taken IS NULL)
-                  AND (ma.is_skipped IS FALSE OR ma.is_skipped IS NULL)
-                ORDER BY ma.scheduled_time ASC
-                LIMIT 5
-            `;
-
-            for (const dose of dueDoses) {
-                const notifTitle = 'Medicine Reminder: ' + dose.medicine_name;
-                const notifBody = 'Time to take your scheduled dose of ' + dose.medicine_name + ' (' + String(dose.scheduled_time).substring(0, 5) + ').';
-                
-                // Avoid inserting duplicates for the same medicine today
-                const [existing] = await sql`
-                    SELECT notification_id FROM notifications
-                    WHERE uid = ${auth.data.uid}
-                      AND title = ${notifTitle}
-                      AND created_at::date = CURRENT_DATE
-                    LIMIT 1
-                `;
-
-                if (!existing) {
-                    await sql`
-                        INSERT INTO notifications (uid, title, body, type, is_read)
-                        VALUES (${auth.data.uid}, ${notifTitle}, ${notifBody}, 'medication_reminder', false)
-                    `;
-                }
-            }
-        } catch (doseErr) {
-            console.error('Failed to sync medication dose notifications:', doseErr);
+            await syncLifecycleNotifications(auth.data.uid, auth.data.pid);
+            await syncDueDoseNotifications(auth.data.uid, auth.data.pid);
+        } catch (syncErr) {
+            console.error('Failed to sync notifications:', syncErr);
         }
 
         let notifications = await sql`
@@ -74,13 +51,24 @@ export async function GET() {
         `;
 
         if (!notifications || notifications.length === 0) {
-            // Seed initial notifications so the page shows real updates
-            await sql`
-                INSERT INTO notifications (uid, title, body, type, is_read)
-                VALUES 
-                    (${auth.data.uid}, 'Welcome to AuraSutra', 'Your healthcare account is active. You can browse doctors, book consultations, and view prescriptions anytime.', 'welcome', false),
-                    (${auth.data.uid}, 'Medication Reminder System Active', 'Automated reminders are enabled for your prescribed dosages.', 'reminder', false)
-            `;
+            await createNotificationOnce(sql, {
+                uid: auth.data.uid,
+                title: 'Welcome to AuraSutra',
+                body: 'Your healthcare account is active. You can browse doctors, book consultations, and view prescriptions anytime.',
+                type: 'general',
+                actionUrl: NOTIFICATION_URLS.dashboard,
+                eventKey: `welcome:${auth.data.uid}`,
+                push: false,
+            });
+            await createNotificationOnce(sql, {
+                uid: auth.data.uid,
+                title: 'Medication Reminder System Active',
+                body: 'Automated reminders are enabled for your prescribed dosages.',
+                type: 'reminder',
+                actionUrl: NOTIFICATION_URLS.medications,
+                eventKey: `reminder-system:${auth.data.uid}`,
+                push: false,
+            });
             notifications = await sql`
                 SELECT * FROM notifications
                 WHERE uid = ${auth.data.uid}
@@ -100,12 +88,37 @@ export async function GET() {
                     try { meta = JSON.parse(meta); } catch {}
                 }
 
+                const appointmentId = meta?.appointment_id || meta?.aid || null;
+                const appointmentRelated =
+                    n.type === 'appointment' ||
+                    ['appointment_status', 'appointment_cancelled', 'mode_change'].includes(String(n.type || '')) ||
+                    /appointment|consultation|reschedul|cancel|confirm|visit mode|refund/i.test(
+                        `${n.title || ''} ${n.body || ''}`
+                    );
+
                 let imageUrl = meta?.image_url || meta?.avatar_url || n.image_url || null;
                 let doctorName = meta?.doctor_name || n.doctor_name || null;
                 let did = meta?.did || null;
 
                 try {
-                    // 1. If did is known, get real profile image from database
+                    // 1. Resolve the exact appointment when the notification carries its id.
+                    if (appointmentId) {
+                        const [apt] = await sql`
+                            SELECT a.did, u.name as doctor_name, u.profile_image_url
+                            FROM appointments a
+                            JOIN doctors d ON a.did = d.did
+                            JOIN users u ON d.uid = u.uid
+                            WHERE a.aid = ${appointmentId} AND a.pid = ${auth.data.pid}
+                            LIMIT 1
+                        `;
+                        if (apt) {
+                            imageUrl = apt.profile_image_url || imageUrl;
+                            doctorName = doctorName || apt.doctor_name;
+                            did = did || apt.did;
+                        }
+                    }
+
+                    // 2. If did is known, get real profile image from database
                     if (did && (!imageUrl || !doctorName)) {
                         const [doc] = await sql`
                             SELECT u.name, u.profile_image_url
@@ -120,9 +133,13 @@ export async function GET() {
                         }
                     }
 
-                    // 2. Try to match doctor from notification body text: e.g. "with Dr. Ridhima Pandey"
-                    if (!imageUrl || !doctorName) {
-                        const match = String(n.body || '').match(/with\s+(Dr\.?\s+[^.]+?)(?:\s+has|\s+on|\.|$)/i);
+                    // 3. Try to match doctor from notification body text:
+                    //    "with Dr. Ridhima Pandey" or "Dr. Ridhima Pandey has confirmed..."
+                    if (appointmentRelated && (!imageUrl || !doctorName)) {
+                        const body = String(n.body || '');
+                        const match =
+                            body.match(/(?:with|by)\s+(Dr\.?\s+[^.]+?)(?:\s+has|\s+on|\.|$)/i) ||
+                            body.match(/(Dr\.?\s+[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*){0,3})\s+(?:has|confirmed|started|cancelled|completed)/i);
                         if (match && match[1]) {
                             const searchedName = match[1].trim().replace(/^Dr\.?\s+/i, '');
                             const [matchedDoc] = await sql`
@@ -139,8 +156,8 @@ export async function GET() {
                         }
                     }
 
-                    // 3. Fallback for appointment notifications: match latest appointment for this patient
-                    if (!imageUrl && (n.type === 'appointment' || String(n.title).toLowerCase().includes('appointment'))) {
+                    // 4. Fallback for appointment notifications: match latest appointment for this patient
+                    if (appointmentRelated && !imageUrl) {
                         const [apt] = await sql`
                             SELECT u.name as doctor_name, u.profile_image_url 
                             FROM appointments a
@@ -162,6 +179,7 @@ export async function GET() {
                 return {
                     ...n,
                     image_url: imageUrl,
+                    avatar_url: imageUrl,
                     doctor_name: doctorName,
                 };
             })

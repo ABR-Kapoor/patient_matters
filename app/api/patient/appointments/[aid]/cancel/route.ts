@@ -4,6 +4,7 @@ import { sendEmail } from '@/lib/shared/notifications/email';
 import { generateAppointmentCancelledForDoctorEmail } from '@/lib/shared/notifications/templates';
 import { requirePatient, requireOwnAppointment } from '@/lib/authz';
 import { closeOpenCallForAppointment } from '@/lib/callSessions';
+import { notifyMany, NOTIFICATION_URLS, type CreateNotificationInput } from '@/lib/shared/notifications/inApp';
 
 export async function PATCH(request: NextRequest, { params }: { params: { aid: string } }) {
     const identity = await requirePatient();
@@ -108,43 +109,45 @@ export async function PATCH(request: NextRequest, { params }: { params: { aid: s
             const doctorProfileImg = doctorUser?.profile_image_url || null;
             const patientProfileImg = patientUser?.profile_image_url || null;
 
-            await sql`
-                INSERT INTO notifications (uid, title, body, type, is_read, metadata)
-                VALUES (
-                    ${identity.data.uid},
-                    'Appointment Cancelled',
-                    ${`Your appointment with ${doctorName} has been cancelled successfully.`},
-                    'appointment',
-                    false,
-                    ${JSON.stringify({
+            const inputs: CreateNotificationInput[] = [
+                {
+                    uid: identity.data.uid,
+                    title: 'Appointment Cancelled',
+                    body: `Your appointment with ${doctorName} has been cancelled successfully.`,
+                    type: 'appointment' as const,
+                    actionUrl: NOTIFICATION_URLS.appointments,
+                    eventKey: `appointment:${aid}:cancelled`,
+                    metadata: {
                         image_url: doctorProfileImg,
                         avatar_url: doctorProfileImg,
                         doctor_name: doctorName,
                         did: data.did,
                         appointment_id: aid,
-                    })}::jsonb
-                )
-            `;
+                        aid,
+                    },
+                },
+            ];
 
             if (doctorUser?.uid) {
-                await sql`
-                    INSERT INTO notifications (uid, title, body, type, is_read, metadata)
-                    VALUES (
-                        ${doctorUser.uid},
-                        'Appointment Cancelled',
-                        ${`Appointment with ${patientName} on ${data.scheduled_date} was cancelled.`},
-                        'appointment',
-                        false,
-                        ${JSON.stringify({
-                            image_url: patientProfileImg,
-                            avatar_url: patientProfileImg,
-                            patient_name: patientName,
-                            pid: data.pid,
-                            appointment_id: aid,
-                        })}::jsonb
-                    )
-                `;
+                inputs.push({
+                    uid: doctorUser.uid,
+                    title: 'Appointment Cancelled',
+                    body: `Appointment with ${patientName} on ${data.scheduled_date} was cancelled.`,
+                    type: 'appointment' as const,
+                    actionUrl: NOTIFICATION_URLS.appointments,
+                    eventKey: `appointment:${aid}:cancelled`,
+                    metadata: {
+                        image_url: patientProfileImg,
+                        avatar_url: patientProfileImg,
+                        patient_name: patientName,
+                        pid: data.pid,
+                        appointment_id: aid,
+                        aid,
+                    },
+                });
             }
+
+            await notifyMany(inputs);
         } catch (notifErr) {
             console.error('Failed to record cancellation notifications:', notifErr);
         }

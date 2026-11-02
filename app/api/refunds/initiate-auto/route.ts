@@ -3,6 +3,7 @@ import { verifyClerkUser } from '@/lib/clerk-verify';
 import { sendEmail } from '@/lib/shared/notifications/email';
 import { generateRefundRequestForAdminEmail } from '@/lib/shared/notifications/templates';
 import sql from '@/lib/db';
+import { notifyOnce, NOTIFICATION_URLS } from '@/lib/shared/notifications/inApp';
 
 const ADMIN_NOTIFICATION_EMAILS = [
   'abrkapoor@gmail.com',
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     // Look up the patient PID from the authenticated Clerk user
     const [patient] = await sql`
-      SELECT p.pid FROM patients p
+      SELECT p.pid, p.uid FROM patients p
       JOIN users u ON p.uid = u.uid
       WHERE u.auth_id = ${kindeUser.id}
     `;
@@ -101,6 +102,22 @@ export async function POST(request: NextRequest) {
     `;
 
     await notifyAdmins(inserted?.refund_id || null);
+
+    try {
+      await notifyOnce({
+        uid: patient.uid,
+        title: 'Refund Request Submitted',
+        body: `Your refund request of INR ${Number(amount || 0).toFixed(2)} has been submitted for review.`,
+        type: 'payment',
+        actionUrl: NOTIFICATION_URLS.appointments,
+        eventKey: `refund:${inserted?.refund_id}:requested`,
+        metadata: {
+          refund_id: inserted?.refund_id,
+        },
+      });
+    } catch (notifErr) {
+      console.error('Auto-refund in-app notification failed:', notifErr);
+    }
 
     return NextResponse.json({
       success: true,

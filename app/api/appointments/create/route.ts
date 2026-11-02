@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { requirePatient } from '@/lib/authz';
+import { notifyMany, NOTIFICATION_URLS, type CreateNotificationInput } from '@/lib/shared/notifications/inApp';
 
 function normalizeTime(timeStr: any): string {
     if (!timeStr) return '10:00:00';
@@ -112,49 +113,45 @@ export async function POST(request: NextRequest) {
             const doctorProfileImg = doctorUser?.profile_image_url || null;
             const patientProfileImg = patientUser?.profile_image_url || null;
 
-            // Notification for Patient (shows doctor's profile image and details)
-            const patientMetadata = JSON.stringify({
-                image_url: doctorProfileImg,
-                avatar_url: doctorProfileImg,
-                doctor_name: doctorName,
-                did: did,
-                appointment_id: appointment?.aid,
-            });
+            const notificationInputs: CreateNotificationInput[] = [
+                {
+                    uid: identity.data.uid,
+                    title: 'Appointment Booked',
+                    body: `Your ${visitType} with ${doctorName} has been scheduled for ${scheduled_date} at ${scheduled_time}.`,
+                    type: 'appointment' as const,
+                    actionUrl: NOTIFICATION_URLS.appointments,
+                    eventKey: `appointment:${appointment?.aid}:booked`,
+                    metadata: {
+                        image_url: doctorProfileImg,
+                        avatar_url: doctorProfileImg,
+                        doctor_name: doctorName,
+                        did: did,
+                        appointment_id: appointment?.aid,
+                        aid: appointment?.aid,
+                    },
+                },
+            ];
 
-            await sql`
-                INSERT INTO notifications (uid, title, body, type, is_read, metadata)
-                VALUES (
-                    ${identity.data.uid},
-                    'Appointment Booked',
-                    ${`Your ${visitType} with ${doctorName} has been scheduled for ${scheduled_date} at ${scheduled_time}.`},
-                    'appointment',
-                    false,
-                    ${patientMetadata}::jsonb
-                )
-            `;
-
-            // Notification for Doctor (shows patient's profile image and details)
             if (doctorUser?.uid) {
-                const doctorMetadata = JSON.stringify({
-                    image_url: patientProfileImg,
-                    avatar_url: patientProfileImg,
-                    patient_name: patientName,
-                    pid: identity.data.pid,
-                    appointment_id: appointment?.aid,
+                notificationInputs.push({
+                    uid: doctorUser.uid,
+                    title: 'New Appointment Booked',
+                    body: `${patientName} has booked a ${visitType} on ${scheduled_date} at ${scheduled_time}.`,
+                    type: 'appointment' as const,
+                    actionUrl: NOTIFICATION_URLS.appointments,
+                    eventKey: `appointment:${appointment?.aid}:booked`,
+                    metadata: {
+                        image_url: patientProfileImg,
+                        avatar_url: patientProfileImg,
+                        patient_name: patientName,
+                        pid: identity.data.pid,
+                        appointment_id: appointment?.aid,
+                        aid: appointment?.aid,
+                    },
                 });
-
-                await sql`
-                    INSERT INTO notifications (uid, title, body, type, is_read, metadata)
-                    VALUES (
-                        ${doctorUser.uid},
-                        'New Appointment Booked',
-                        ${`${patientName} has booked a ${visitType} on ${scheduled_date} at ${scheduled_time}.`},
-                        'appointment',
-                        false,
-                        ${doctorMetadata}::jsonb
-                    )
-                `;
             }
+
+            await notifyMany(notificationInputs);
         } catch (notifErr) {
             console.error('Failed to dispatch in-app notifications:', notifErr);
         }
