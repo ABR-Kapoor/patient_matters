@@ -14,7 +14,7 @@ export async function PATCH(request: NextRequest) {
         if (markAll) {
             await sql`
                 UPDATE notifications
-                SET is_read = true
+                SET is_read = true, read_at = COALESCE(read_at, NOW())
                 WHERE uid = ${auth.data.uid} AND is_read = false
             `;
             return NextResponse.json({ success: true });
@@ -28,7 +28,7 @@ export async function PATCH(request: NextRequest) {
         // not addressable.
         await sql`
             UPDATE notifications
-            SET is_read = true
+            SET is_read = true, read_at = COALESCE(read_at, NOW())
             WHERE notification_id = ${notification_id} AND uid = ${auth.data.uid}
         `;
 

@@ -4,6 +4,7 @@ import { generateAppointmentCreatedEmail, generatePrescriptionCreatedEmail, gene
 import { formatDate } from '@/lib/formatDate';
 import sql from '@/lib/db';
 import { requireSessionUser, maskAccountNumber } from '@/lib/authz';
+import { notifyOnce, NOTIFICATION_URLS } from '@/lib/shared/notifications/inApp';
 import { timingSafeEqual } from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -229,6 +230,37 @@ export async function POST(request: NextRequest) {
             });
             const doctorEmailResult = await sendEmail({ to: doctor.user.email, subject: `Prescription Created for ${patient.user.name} - AuraSutra`, html: doctorEmailHtml });
             results.push({ recipient: 'doctor', email: doctor.user.email, ...doctorEmailResult });
+
+            try {
+                const [prescription] = await sql`
+                    SELECT prescription_id
+                    FROM prescriptions
+                    WHERE pid = ${patientId}
+                      AND did = ${doctorId}
+                      AND sent_to_patient = true
+                    ORDER BY COALESCE(sent_at, created_at) DESC
+                    LIMIT 1
+                `;
+                if (prescription?.prescription_id) {
+                    const doctorName = `Dr. ${String(doctor.user.name || 'Doctor').replace(/^Dr\.?\s+/i, '')}`;
+                    await notifyOnce({
+                        uid: patient.user.uid,
+                        title: `New Prescription from ${doctorName}`,
+                        body: `Your prescription for ${diagnosis || 'your consultation'} is ready.`,
+                        type: 'prescription',
+                        actionUrl: NOTIFICATION_URLS.prescriptions,
+                        eventKey: `prescription:${prescription.prescription_id}:sent`,
+                        metadata: {
+                            prescription_id: prescription.prescription_id,
+                            doctor_name: doctorName,
+                            image_url: doctor.user.profileImageUrl || null,
+                            avatar_url: doctor.user.profileImageUrl || null,
+                        },
+                    });
+                }
+            } catch (notifErr) {
+                console.error('Prescription in-app notification failed:', notifErr);
+            }
         }
 
         else if (type === 'payment_completed') {
@@ -295,6 +327,197 @@ export async function POST(request: NextRequest) {
                     ...adminEmailResults[index],
                 })),
             );
+
+            if (transactionId) {
+                try {
+                    const doctorName = `Dr. ${String(doctor.user.name || 'Doctor').replace(/^Dr\.?\s+/i, '')}`;
+                    await notifyOnce({
+                        uid: patient.user.uid,
+                        title: 'Payment Successful',
+                        body: `INR ${Number(amount || 0).toFixed(2)} paid for your consultation with ${doctorName}.`,
+                        type: 'payment',
+                        actionUrl: NOTIFICATION_URLS.appointments,
+                        eventKey: `payment:${transactionId}:paid`,
+                        metadata: {
+                            razorpay_payment_id: transactionId,
+                            doctor_name: doctorName,
+                            image_url: doctor.user.profileImageUrl || null,
+                            avatar_url: doctor.user.profileImageUrl || null,
+                        },
+                    });
+                } catch (notifErr) {
+                    console.error('Payment in-app notification failed:', notifErr);
+                }
+            }
+        }
+
+        else if (type === 'appointment_status') {
+            const { appointmentId, status, mode, doctorId, updatedAt } = data;
+
+            if (!appointmentId) {
+                return NextResponse.json({ success: false, error: 'appointmentId is required' }, { status: 400 });
+            }
+            if (!status && !mode) {
+                return NextResponse.json({ success: false, error: 'status or mode is required' }, { status: 400 });
+            }
+
+            const [appointment] = await sql`
+                SELECT
+                    a.aid, a.did, a.pid, a.status, a.mode, a.scheduled_date, a.scheduled_time,
+                    p.uid AS patient_uid,
+                    pu.name AS patient_name,
+                    pu.profile_image_url AS patient_image,
+                    du.name AS doctor_name,
+                    du.profile_image_url AS doctor_image
+                FROM appointments a
+                JOIN patients p ON a.pid = p.pid
+                JOIN users pu ON p.uid = pu.uid
+                JOIN doctors d ON a.did = d.did
+                JOIN users du ON d.uid = du.uid
+                WHERE a.aid = ${appointmentId}
+                LIMIT 1
+            `;
+
+            if (!appointment) {
+                return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
+            }
+
+            // Service callers are already trusted. A user session may only trigger
+            // status notifications for an appointment they are actually part of.
+            if (auth.mode === 'session') {
+                if (auth.role === 'doctor') {
+                    const [row] = await sql`SELECT did FROM doctors WHERE uid = ${auth.uid} LIMIT 1`;
+                    if (!row || row.did !== appointment.did) {
+                        return NextResponse.json({ success: false, error: 'Not your appointment' }, { status: 403 });
+                    }
+                } else if (auth.role === 'patient') {
+                    const [row] = await sql`SELECT pid FROM patients WHERE uid = ${auth.uid} LIMIT 1`;
+                    if (!row || row.pid !== appointment.pid) {
+                        return NextResponse.json({ success: false, error: 'Not your appointment' }, { status: 403 });
+                    }
+                } else {
+                    return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+                }
+            }
+
+            if (doctorId && appointment.did !== doctorId) {
+                return NextResponse.json({ success: false, error: 'Appointment does not belong to this doctor' }, { status: 403 });
+            }
+
+            const displayDoctorName = `Dr. ${String(appointment.doctor_name || 'Doctor').replace(/^Dr\.?\s+/i, '')}`;
+            const patientName = appointment.patient_name || 'Patient';
+            const appointmentWhen = `${String(appointment.scheduled_date).slice(0, 10)} at ${String(appointment.scheduled_time || '').slice(0, 5)}`;
+            const doctorImage = appointment.doctor_image || null;
+            const patientImage = appointment.patient_image || null;
+            const modeLabel = mode === 'online' ? 'Online Video Consultation' : 'In-Clinic Visit';
+            const updatedAtMs = updatedAt && !Number.isNaN(new Date(updatedAt).getTime())
+                ? new Date(updatedAt).getTime()
+                : Date.now();
+
+            let patientTitle = '';
+            let patientBody = '';
+            let doctorTitle = '';
+            let doctorBody = '';
+
+            if (status === 'confirmed') {
+                patientTitle = 'Appointment Confirmed';
+                patientBody = `${displayDoctorName} has confirmed your consultation for ${appointmentWhen}.`;
+                doctorTitle = 'Appointment Confirmed';
+                doctorBody = `You confirmed the appointment with ${patientName}.`;
+            } else if (status === 'in_progress') {
+                patientTitle = 'Consultation Started';
+                patientBody = `${displayDoctorName} has started your consultation session.`;
+                doctorTitle = 'Consultation In Progress';
+                doctorBody = `Consultation with ${patientName} is currently in progress.`;
+            } else if (status === 'completed') {
+                patientTitle = 'Consultation Completed';
+                patientBody = `Your consultation with ${displayDoctorName} has been marked as completed.`;
+                doctorTitle = 'Consultation Completed';
+                doctorBody = `You marked the consultation with ${patientName} as completed.`;
+            } else if (status === 'cancelled') {
+                patientTitle = 'Appointment Cancelled';
+                patientBody = `${displayDoctorName} cancelled the appointment on ${String(appointment.scheduled_date).slice(0, 10)}. A full refund will be processed.`;
+                doctorTitle = 'Appointment Cancelled';
+                doctorBody = `You cancelled the appointment with ${patientName}.`;
+            } else if (status === 'rescheduled') {
+                patientTitle = 'Appointment Rescheduled';
+                patientBody = `Your appointment with ${displayDoctorName} is now scheduled for ${appointmentWhen}.`;
+                doctorTitle = 'Appointment Rescheduled';
+                doctorBody = `The appointment with ${patientName} is now scheduled for ${appointmentWhen}.`;
+            } else if (mode) {
+                patientTitle = 'Visit Mode Updated';
+                patientBody = `Your appointment mode has been changed to ${modeLabel}.`;
+                doctorTitle = 'Visit Mode Updated';
+                doctorBody = `Appointment mode with ${patientName} was changed to ${modeLabel}.`;
+            }
+
+            if (!patientTitle || !doctorTitle) {
+                return NextResponse.json({ success: true, skipped: true, results: [] });
+            }
+
+            const patientEventKey = mode && !status
+                ? `appointment:${appointmentId}:mode:${mode}:${updatedAtMs}`
+                : `appointment:${appointmentId}:${status}`;
+            const doctorEventKey = mode && !status
+                ? `doctor:appointment:${appointmentId}:mode:${mode}:${updatedAtMs}`
+                : `doctor:appointment:${appointmentId}:${status}`;
+
+            const patientNotification = await notifyOnce({
+                uid: appointment.patient_uid,
+                title: patientTitle,
+                body: patientBody,
+                type: 'appointment',
+                actionUrl: NOTIFICATION_URLS.appointments,
+                eventKey: patientEventKey,
+                metadata: {
+                    appointment_id: appointmentId,
+                    aid: appointmentId,
+                    did: appointment.did,
+                    doctor_name: displayDoctorName,
+                    image_url: doctorImage,
+                    avatar_url: doctorImage,
+                    ...(mode ? { mode } : {}),
+                    ...(status ? { status } : {}),
+                },
+            });
+
+            // The doctor-side notification uses the doctor's user id, which is not
+            // exposed in the appointment query above. Fetch it from the doctor row.
+            const [doctorUser] = await sql`
+                SELECT d.uid AS doctor_uid
+                FROM doctors d
+                WHERE d.did = ${appointment.did}
+                LIMIT 1
+            `;
+
+            const doctorResult = doctorUser?.doctor_uid
+                ? await notifyOnce({
+                    uid: doctorUser.doctor_uid,
+                    title: doctorTitle,
+                    body: doctorBody,
+                    type: 'appointment',
+                    actionUrl: NOTIFICATION_URLS.appointments,
+                    eventKey: doctorEventKey,
+                    pushChannelId: 'doctor-updates',
+                    metadata: {
+                        appointment_id: appointmentId,
+                        aid: appointmentId,
+                        did: appointment.did,
+                        pid: appointment.pid,
+                        patient_name: patientName,
+                        image_url: patientImage,
+                        avatar_url: patientImage,
+                        ...(mode ? { mode } : {}),
+                        ...(status ? { status } : {}),
+                    },
+                })
+                : null;
+
+            results.push(
+                { recipient: 'patient', ...patientNotification },
+                { recipient: 'doctor', ...doctorResult },
+            );
+            return NextResponse.json({ success: true, results });
         }
 
         else {

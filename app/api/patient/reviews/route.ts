@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { requirePatient, requireOwnAppointment } from '@/lib/authz';
+import { notifyMany, NOTIFICATION_URLS, type CreateNotificationInput } from '@/lib/shared/notifications/inApp';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -59,6 +60,75 @@ export async function POST(request: NextRequest) {
             updated_at = CURRENT_TIMESTAMP
       RETURNING review_id, aid, pid, did, rating, comment, is_published, created_at, updated_at
     `;
+
+    try {
+      const [doctorUser] = await sql`
+        SELECT d.uid, u.name, u.profile_image_url
+        FROM doctors d
+        JOIN users u ON u.uid = d.uid
+        WHERE d.did = ${apt.did}
+        LIMIT 1
+      `;
+      const [patientUser] = await sql`
+        SELECT u.name, u.profile_image_url
+        FROM patients p
+        JOIN users u ON u.uid = p.uid
+        WHERE p.pid = ${identity.data.pid}
+        LIMIT 1
+      `;
+
+      const doctorName = doctorUser?.name
+        ? `Dr. ${String(doctorUser.name).replace(/^Dr\.?\s+/i, '')}`
+        : 'your doctor';
+      const patientName = patientUser?.name || 'A patient';
+      const timestamp = new Date(review.updated_at || review.created_at || Date.now()).getTime();
+      const eventKey = `review:${review.review_id}:${timestamp}`;
+
+      const inputs: CreateNotificationInput[] = [
+        {
+          uid: identity.data.uid,
+          title: 'Review Submitted',
+          body: `Thanks for sharing your feedback about ${doctorName}.`,
+          type: 'review' as const,
+          actionUrl: NOTIFICATION_URLS.appointments,
+          eventKey,
+          metadata: {
+            review_id: review.review_id,
+            aid,
+            rating: review.rating,
+            doctor_name: doctorName,
+            image_url: doctorUser?.profile_image_url || null,
+            avatar_url: doctorUser?.profile_image_url || null,
+          },
+          push: false,
+        },
+      ];
+
+      if (doctorUser?.uid) {
+        inputs.push({
+          uid: doctorUser.uid,
+          title: 'New Review Received',
+          body: `${patientName} rated your consultation ${review.rating}/5.`,
+          type: 'review' as const,
+          actionUrl: NOTIFICATION_URLS.appointments,
+          eventKey,
+          pushChannelId: 'doctor-updates',
+          metadata: {
+            review_id: review.review_id,
+            aid,
+            rating: review.rating,
+            patient_name: patientName,
+            image_url: patientUser?.profile_image_url || null,
+            avatar_url: patientUser?.profile_image_url || null,
+          },
+          push: true,
+        });
+      }
+
+      await notifyMany(inputs);
+    } catch (notifErr) {
+      console.error('[patient/reviews POST] notification failed:', notifErr);
+    }
 
     return NextResponse.json({ success: true, review });
   } catch (error: any) {

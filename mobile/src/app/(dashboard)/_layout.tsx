@@ -8,6 +8,7 @@ import { useAuthToken } from '@/hooks/stubs';
 import { syncDoseNotifications, type DoseRecord } from '@/lib/doseNotifications';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
 import { VoiceSearchProvider } from '@/lib/VoiceSearchContext';
+import { NotificationFeedProvider } from '@/components/NotificationFeedProvider';
 
 import { StatusBar } from 'expo-status-bar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -50,6 +51,7 @@ export default function DashboardLayout() {
   }, [token]);
 
   return (
+    <NotificationFeedProvider>
     <VoiceSearchProvider>
       <>
       <StatusBar style="dark" />
@@ -137,5 +139,6 @@ export default function DashboardLayout() {
       <BottomNav />
       </>
     </VoiceSearchProvider>
+    </NotificationFeedProvider>
   );
 }

@@ -4,13 +4,14 @@ import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import PatientProfilePicture from '@/app/components/ProfilePicture';
-import LiveCallNotifier from '@/app/dashboard/components/LiveCallNotifier';
+import { CallProvider } from '@/app/components/CallProvider';
 import Sidebar from '@/app/dashboard/components/Sidebar';
 import { AuthTokenProvider } from '@/lib/auth-token-context';
 import PatientProfileCheck from '@/app/components/PatientProfileCheck';
 import EmergencyBanner from '@/app/components/EmergencyBanner';
 import DailyMedicinePopup from '@/app/components/DailyMedicinePopup';
 import { usePatientStore } from '@/app/store/usePatientStore';
+import { useNotificationStream } from '@/app/hooks/useNotificationStream';
 import { useNotificationStore } from '@/app/store/useNotificationStore';
 
 interface DashboardLayoutClientProps {
@@ -40,6 +41,7 @@ export default function DashboardLayoutClient({ children, user, accessToken }: D
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const pathname = usePathname();
+  useNotificationStream(Boolean(accessToken));
 
   useEffect(() => {
     setIsMobileSidebarOpen(false);
@@ -50,6 +52,7 @@ export default function DashboardLayoutClient({ children, user, accessToken }: D
       {/* Global store bootstrap — runs once per session */}
       {accessToken && <StoreBootstrap token={accessToken} />}
 
+      <CallProvider>
       <div className="min-h-screen flex bg-sage-50 lg:bg-white">
         {/* Desktop Sidebar - Always visible on large screens */}
         <div 
@@ -103,7 +106,6 @@ export default function DashboardLayoutClient({ children, user, accessToken }: D
 
           {/* Content */}
           <main className="relative flex-1 overflow-auto">
-            <LiveCallNotifier />
             <div className="w-full min-h-full flex flex-col">
               <PatientProfileCheck />
               <DailyMedicinePopup />
@@ -114,6 +116,7 @@ export default function DashboardLayoutClient({ children, user, accessToken }: D
           </main>
         </div>
       </div>
+      </CallProvider>
     </AuthTokenProvider>
   );
 }

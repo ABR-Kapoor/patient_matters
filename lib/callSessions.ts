@@ -1,5 +1,11 @@
-import sql from '@/lib/db';
+﻿import sql from '@/lib/db';
 import { isJoinableStatus } from '@/lib/authz';
+import {
+    createNotificationOnce,
+    dispatchNotificationPush,
+    NOTIFICATION_URLS,
+    type NotificationRow,
+} from '@/lib/shared/notifications/inApp';
 
 export type CallRole = 'patient' | 'doctor';
 export type CallStatus = 'ringing' | 'active' | 'rejected' | 'cancelled' | 'expired' | 'ended';
@@ -230,7 +236,7 @@ async function expireParticipantStaleRinging(tx: any, patientUid: string, doctor
 }
 
 async function reconcileOpenSessions(uid: string): Promise<void> {
-    await sql`
+    const rows = await sql<any[]>`
         WITH expired AS (
             UPDATE call_sessions
             SET status = 'expired',
@@ -240,6 +246,7 @@ async function reconcileOpenSessions(uid: string): Promise<void> {
             WHERE status = 'ringing'
               AND ring_expires_at <= NOW()
               AND (patient_uid = ${uid} OR doctor_uid = ${uid})
+            RETURNING id, aid, initiator_uid, 'expired'::text AS event
         ), closed AS (
             UPDATE call_sessions cs
             SET status = 'ended',
@@ -252,9 +259,53 @@ async function reconcileOpenSessions(uid: string): Promise<void> {
               AND (cs.status = 'active' OR cs.ring_expires_at > NOW())
               AND (cs.patient_uid = ${uid} OR cs.doctor_uid = ${uid})
               AND (a.mode <> 'online' OR a.status NOT IN ('confirmed', 'in_progress'))
+            RETURNING cs.id, cs.aid, cs.initiator_uid, 'ended'::text AS event
         )
-        SELECT 1
+        SELECT * FROM expired
+        UNION ALL
+        SELECT * FROM closed
     `;
+
+    const [doctorAccount] = rows.length
+        ? await sql`SELECT 1 FROM doctors WHERE uid = ${uid} LIMIT 1`
+        : [];
+    const pushChannel = doctorAccount ? 'doctor-updates' : 'patient-updates';
+
+    for (const row of rows) {
+        const expired = row.event === 'expired';
+        const isInitiator = row.initiator_uid === uid;
+        const title = expired
+            ? (isInitiator ? 'Call Not Answered' : 'Missed Call')
+            : 'Call Ended';
+        const body = expired
+            ? (isInitiator
+                ? 'The other participant did not answer your call.'
+                : 'You missed an incoming call.')
+            : 'Your consultation call has ended.';
+
+        try {
+            const result = await createNotificationOnce(sql, {
+                uid,
+                title,
+                body,
+                type: 'appointment',
+                actionUrl: NOTIFICATION_URLS.appointments,
+                eventKey: `call:${row.id}:${row.event}`,
+                metadata: {
+                    call_session_id: row.id,
+                    appointment_id: row.aid,
+                    aid: row.aid,
+                    event: row.event,
+                    push_channel: pushChannel,
+                },
+            });
+            if (result.notification) {
+                await dispatchNotificationPush(result.notification);
+            }
+        } catch (notifError) {
+            console.error('[CallSessions] call reconciliation notification failed:', notifError);
+        }
+    }
 }
 
 async function loadOpenSessionForUser(db: any, uid: string): Promise<CallSessionRow | null> {
@@ -369,9 +420,89 @@ export async function getActiveCallState(uid: string): Promise<ActiveCallState> 
     };
 }
 
+type CallNotificationEvent = 'ringing' | 'active' | 'rejected' | 'cancelled' | 'ended' | 'expired';
+
+function doctorDisplayName(name: string | null): string {
+    return name ? `Dr. ${String(name).replace(/^Dr\.?\s+/i, '')}` : 'Doctor';
+}
+
+async function notifyCallEvent(
+    tx: any,
+    context: CallContext,
+    session: CallSessionRow,
+    event: CallNotificationEvent,
+    actorUid: string,
+): Promise<NotificationRow | null> {
+    const recipientUid = session.patient_uid === actorUid ? session.doctor_uid : session.patient_uid;
+    if (!recipientUid || recipientUid === actorUid) return null;
+    const pushChannel = recipientUid === context.doctor_uid ? 'doctor-updates' : 'patient-updates';
+
+    const actorName = actorUid === context.patient_uid
+        ? context.patient_name || 'Patient'
+        : doctorDisplayName(context.doctor_name);
+    const peerName = recipientUid === context.patient_uid
+        ? context.patient_name || 'Patient'
+        : doctorDisplayName(context.doctor_name);
+    const actorImage = actorUid === context.patient_uid
+        ? context.patient_image
+        : context.doctor_image;
+
+    const copy: Record<CallNotificationEvent, { title: string; body: string }> = {
+        ringing: {
+            title: 'Incoming Video Call',
+            body: `${actorName} is calling you now.`,
+        },
+        active: {
+            title: 'Call Started',
+            body: `Your consultation with ${actorName} is now active.`,
+        },
+        rejected: {
+            title: 'Call Declined',
+            body: `${actorName} declined the call.`,
+        },
+        cancelled: {
+            title: 'Call Cancelled',
+            body: `${actorName} cancelled the call.`,
+        },
+        ended: {
+            title: 'Call Ended',
+            body: `Your consultation with ${actorName} has ended.`,
+        },
+        expired: {
+            title: 'Missed Call',
+            body: `The call with ${actorName} was not answered.`,
+        },
+    };
+
+    const actionUrl = event === 'ringing' || event === 'active'
+        ? NOTIFICATION_URLS.videoCall(session.aid)
+        : NOTIFICATION_URLS.appointments;
+
+    const result = await createNotificationOnce(tx, {
+        uid: recipientUid,
+        title: copy[event].title,
+        body: copy[event].body,
+        type: 'appointment',
+        actionUrl,
+        eventKey: `call:${session.id}:${event}`,
+        metadata: {
+            call_session_id: session.id,
+            appointment_id: session.aid,
+            aid: session.aid,
+            event,
+            peer_name: peerName,
+            image_url: actorImage,
+            avatar_url: actorImage,
+            push_channel: pushChannel,
+        },
+    });
+    return result.notification;
+}
+
 export async function startCallSession(actor: CallActor, aid: string): Promise<CallResult<CallSessionView>> {
+    const pendingPushes: NotificationRow[] = [];
     try {
-        return await sql.begin(async (tx: any) => {
+        const result = await sql.begin(async (tx: any) => {
             const context = await loadCallContextForUpdate(tx, aid);
             if (!context) return fail(404, 'NOT_FOUND', 'Appointment not found.');
             if (actor.uid !== context.patient_uid && actor.uid !== context.doctor_uid) {
@@ -426,8 +557,27 @@ export async function startCallSession(actor: CallActor, aid: string): Promise<C
                 RETURNING *
             `;
 
+            const created = await notifyCallEvent(
+                tx,
+                context,
+                session as CallSessionRow,
+                'ringing',
+                actor.uid,
+            );
+            if (created) pendingPushes.push(created);
+
             return { ok: true, data: toSessionView(session as CallSessionRow, context, actor.uid) };
         });
+
+        for (const notification of pendingPushes) {
+            try {
+                await dispatchNotificationPush(notification);
+            } catch (pushError) {
+                console.error('[CallSessions] ringing push failed:', pushError);
+            }
+        }
+
+        return result as CallResult<CallSessionView>;
     } catch (error: any) {
         if (error?.code === '23505') {
             const context = await loadCallContext(aid);
@@ -481,8 +631,9 @@ export async function performCallAction(
         return fail(400, 'BAD_REQUEST', 'A valid appointment id is required.');
     }
 
+    const pendingPushes: NotificationRow[] = [];
     try {
-        return await sql.begin(async (tx: any) => {
+        const result = await sql.begin(async (tx: any) => {
             const context = await loadCallContextForUpdate(tx, aid);
             if (!context) return fail(404, 'NOT_FOUND', 'Appointment not found.');
             if (actor.uid !== context.patient_uid && actor.uid !== context.doctor_uid) {
@@ -528,6 +679,14 @@ export async function performCallAction(
                     RETURNING *
                 `;
                 await markAppointmentCallStarted(tx, aid);
+                const created = await notifyCallEvent(
+                    tx,
+                    context,
+                    updated as CallSessionRow,
+                    'active',
+                    actor.uid,
+                );
+                if (created) pendingPushes.push(created);
                 return { ok: true, data: toSessionView(updated as CallSessionRow, context, actor.uid) };
             }
 
@@ -551,6 +710,14 @@ export async function performCallAction(
                     WHERE id = ${session.id}
                     RETURNING *
                 `;
+                const created = await notifyCallEvent(
+                    tx,
+                    context,
+                    updated as CallSessionRow,
+                    'rejected',
+                    actor.uid,
+                );
+                if (created) pendingPushes.push(created);
                 return { ok: true, data: toSessionView(updated as CallSessionRow, context, actor.uid) };
             }
 
@@ -574,6 +741,14 @@ export async function performCallAction(
                     WHERE id = ${session.id}
                     RETURNING *
                 `;
+                const created = await notifyCallEvent(
+                    tx,
+                    context,
+                    updated as CallSessionRow,
+                    'cancelled',
+                    actor.uid,
+                );
+                if (created) pendingPushes.push(created);
                 return { ok: true, data: toSessionView(updated as CallSessionRow, context, actor.uid) };
             }
 
@@ -595,8 +770,26 @@ export async function performCallAction(
                 RETURNING *
             `;
             await markAppointmentCallEnded(tx, aid, session.accepted_at);
+            const created = await notifyCallEvent(
+                tx,
+                context,
+                updated as CallSessionRow,
+                'ended',
+                actor.uid,
+            );
+            if (created) pendingPushes.push(created);
             return { ok: true, data: toSessionView(updated as CallSessionRow, context, actor.uid) };
         });
+
+        for (const notification of pendingPushes) {
+            try {
+                await dispatchNotificationPush(notification);
+            } catch (pushError) {
+                console.error('[CallSessions] call push failed:', pushError);
+            }
+        }
+
+        return result as CallResult<CallSessionView>;
     } catch (error: any) {
         console.error('[CallSessions] action error:', error);
         return fail(500, 'INTERNAL_ERROR', 'Could not update the call.');

@@ -1,6 +1,6 @@
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/expo';
-import { Slot, useRouter, useSegments, type Href } from 'expo-router';
+import { Slot, useRouter, useSegments } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -13,6 +13,8 @@ import {
 import { LanguageProvider } from '../lib/LanguageContext';
 import { NotificationProvider } from '../lib/NotificationContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { registerPushNotifications, subscribeToPushTokenChanges } from '../lib/pushNotifications';
+import { toMobileNotificationHref } from '../lib/notificationRoute';
 
 export { ErrorBoundary };
 
@@ -48,7 +50,7 @@ const tokenCache = {
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 function RootLayoutNav() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -69,10 +71,21 @@ function RootLayoutNav() {
     ensureNotificationPermission().catch(() => {});
   }, []);
 
-  // A tapped dose reminder opens the Medications tab so the dose can be logged.
+  // Register the Expo push token once the Clerk session is available. The
+  // server stores it against the patient uid and uses it for background pushes.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void registerPushNotifications(getToken);
+    return subscribeToPushTokenChanges(getToken);
+  }, [getToken, isLoaded, isSignedIn]);
+
+  // Tapping a dose reminder or lifecycle push opens the matching mobile route.
   useEffect(() => {
     if (!isLoaded) return;
-    return subscribeToDoseNotificationTaps((url) => router.push(url as Href));
+    return subscribeToDoseNotificationTaps((url) => {
+      const href = toMobileNotificationHref(url);
+      if (href) router.push(href);
+    });
   }, [isLoaded, router]);
 
 

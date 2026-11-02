@@ -13,6 +13,7 @@ import {
   Search,
   PanelLeftClose,
   LogOut,
+  Bell,
 } from 'lucide-react';
 import { SignOutButton } from '@clerk/nextjs';
 import PatientProfilePicture from '@/app/components/ProfilePicture';
@@ -22,6 +23,7 @@ import { useTranslation } from '@/app/hooks/useTranslation';
 import { useNameTransliteration } from '@/app/hooks/useNameTransliteration';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { useProfileStore } from '@/app/store/useProfileStore';
+import { useNotificationStore } from '@/app/store/useNotificationStore';
 
 interface SidebarProps {
   user?: any;
@@ -42,6 +44,7 @@ export default function Sidebar({ user, isExpanded = true, onToggle }: SidebarPr
   const { currentLocale } = useLanguage();
   const [displayName, setDisplayName] = useState('');
   const profileStore = useProfileStore();
+  const unreadCount = useNotificationStore((state) => state.unreadCount);
 
   useEffect(() => {
     const updateName = async () => {
@@ -85,6 +88,7 @@ export default function Sidebar({ user, isExpanded = true, onToggle }: SidebarPr
           <SidebarIconButton icon={Search} href="/dashboard/find-doctors" active={isActive('/dashboard/find-doctors')} title={titleFindDoctors} />
           <SidebarIconButton icon={Calendar} href="/dashboard/appointments" active={isActive('/dashboard/appointments')} title={titleAppointments} />
           <SidebarIconButton icon={Pill} href="/dashboard/prescriptions" active={isActive('/dashboard/prescriptions')} title={titlePrescriptions} />
+          <SidebarIconButton icon={Bell} href="/dashboard/notifications" active={isActive('/dashboard/notifications')} title="Notifications" badge={unreadCount} />
           <SidebarIconButton icon={User} href="/dashboard/profile" active={isActive('/dashboard/profile')} title={titleProfile} />
         </nav>
 
@@ -142,6 +146,13 @@ export default function Sidebar({ user, isExpanded = true, onToggle }: SidebarPr
           active={isActive('/dashboard/prescriptions')}
         />
         <SidebarNavItem 
+          label="Notifications" 
+          href="/dashboard/notifications" 
+          icon={Bell}
+          active={isActive('/dashboard/notifications')}
+          badge={unreadCount}
+        />
+        <SidebarNavItem 
           label="Profile" 
           href="/dashboard/profile" 
           icon={User}
@@ -195,12 +206,14 @@ function SidebarNavItem({
   icon: Icon,
   active,
   highlighted,
+  badge,
 }: {
   label: string;
   href: string;
   icon: any;
   active: boolean;
   highlighted?: boolean;
+  badge?: number;
 }) {
   return (
     <Link
@@ -223,6 +236,11 @@ function SidebarNavItem({
       >
         <TranslatedText>{label}</TranslatedText>
       </span>
+      {badge ? (
+        <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -255,18 +273,20 @@ function SidebarIconButton({
   active,
   highlighted,
   title,
+  badge,
 }: {
   icon: any;
   href: string;
   active: boolean;
   highlighted?: boolean;
   title?: string;
+  badge?: number;
 }) {
   return (
     <Link
       href={href}
       title={title}
-      className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+      className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
         highlighted
           ? 'bg-white text-forest-800 shadow-sm border border-sage-200'
           : active
@@ -279,6 +299,11 @@ function SidebarIconButton({
         strokeWidth={highlighted ? 2 : 1.5}
         color={highlighted ? 'var(--forest-600)' : 'currentColor'}
       />
+      {badge ? (
+        <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-primary text-white text-[9px] font-bold flex items-center justify-center">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      ) : null}
     </Link>
   );
 }

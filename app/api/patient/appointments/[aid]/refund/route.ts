@@ -3,6 +3,7 @@ import sql from '@/lib/db';
 import { sendEmail } from '@/lib/shared/notifications/email';
 import { generateRefundRequestForAdminEmail, generateRefundRequestForDoctorEmail, generateRefundRequestForPatientEmail } from '@/lib/shared/notifications/templates';
 import { requirePatient, requireOwnAppointment } from '@/lib/authz';
+import { notifyMany, NOTIFICATION_URLS, type CreateNotificationInput } from '@/lib/shared/notifications/inApp';
 
 export async function POST(request: NextRequest, { params }: { params: { aid: string } }) {
   const identity = await requirePatient();
@@ -160,38 +161,76 @@ export async function POST(request: NextRequest, { params }: { params: { aid: st
           subject: `Refund request received — ₹${refundAmount.toFixed(2)}`,
           html: patientHtml,
         });
-        // In-app notifications for refund request
-        try {
-          const [docRow] = await sql`SELECT uid FROM doctors WHERE did = ${apt.doctor_did}`;
-          await sql`
-            INSERT INTO notifications (uid, title, body, type, is_read)
-            VALUES (
-              ${identity.data.uid},
-              'Refund Request Submitted',
-              ${`Your refund request of ₹${refundAmount.toFixed(2)} has been submitted for review.`},
-              'refund',
-              false
-            )
-          `;
-
-          if (docRow?.uid) {
-            await sql`
-              INSERT INTO notifications (uid, title, body, type, is_read)
-              VALUES (
-                ${docRow.uid},
-                'Refund Requested by Patient',
-                ${`${patientData?.name || 'A patient'} requested a refund of ₹${refundAmount.toFixed(2)}.`},
-                'refund',
-                false
-              )
-            `;
-          }
-        } catch (notifErr) {
-          console.error('In-app refund notification error:', notifErr);
-        }
       }
     } catch (emailErr) {
       console.error('Refund notification email failed:', emailErr);
+    }
+
+    // In-app notifications are independent of email availability.
+    try {
+      const [doctorUser] = await sql`
+        SELECT d.uid, u.name, u.profile_image_url
+        FROM doctors d
+        JOIN users u ON d.uid = u.uid
+        WHERE d.did = ${apt.doctor_did}
+        LIMIT 1
+      `;
+      const [patientUser] = await sql`
+        SELECT u.name, u.profile_image_url
+        FROM patients p
+        JOIN users u ON p.uid = u.uid
+        WHERE p.pid = ${apt.pid}
+        LIMIT 1
+      `;
+      const doctorName = doctorUser?.name ? `Dr. ${String(doctorUser.name).replace(/^Dr\.?\s+/i, '')}` : 'your doctor';
+      const patientName = patientUser?.name || 'A patient';
+      const doctorProfileImg = doctorUser?.profile_image_url || null;
+      const patientProfileImg = patientUser?.profile_image_url || null;
+
+      const inputs: CreateNotificationInput[] = [
+        {
+          uid: identity.data.uid,
+          title: 'Refund Request Submitted',
+          body: `Your refund request of ₹${refundAmount.toFixed(2)} has been submitted for review.`,
+          type: 'payment' as const,
+          actionUrl: NOTIFICATION_URLS.appointments,
+          eventKey: `refund:${refundRequest.refund_id}:requested`,
+          metadata: {
+            image_url: doctorProfileImg,
+            avatar_url: doctorProfileImg,
+            doctor_name: doctorName,
+            did: apt.doctor_did,
+            appointment_id: aid,
+            aid,
+            refund_id: refundRequest.refund_id,
+          },
+        },
+      ];
+
+      if (doctorUser?.uid) {
+        inputs.push({
+          uid: doctorUser.uid,
+          title: 'Refund Requested by Patient',
+          body: `${patientName} requested a refund of ₹${refundAmount.toFixed(2)}.`,
+          type: 'payment' as const,
+          actionUrl: NOTIFICATION_URLS.appointments,
+          eventKey: `refund:${refundRequest.refund_id}:requested`,
+          pushChannelId: 'doctor-updates',
+          metadata: {
+            image_url: patientProfileImg,
+            avatar_url: patientProfileImg,
+            patient_name: patientName,
+            pid: apt.pid,
+            appointment_id: aid,
+            aid,
+            refund_id: refundRequest.refund_id,
+          },
+        });
+      }
+
+      await notifyMany(inputs);
+    } catch (notifErr) {
+      console.error('In-app refund notification error:', notifErr);
     }
 
     return NextResponse.json({

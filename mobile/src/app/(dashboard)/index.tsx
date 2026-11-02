@@ -11,11 +11,12 @@ import { fetchWithAuth } from '../../lib/fetchWithAuth';
 import { normalizeDoctorList, cleanDoctorList, MIN_SYMPTOM_LENGTH } from '../../lib/doctorList';
 import { useVoiceSearch } from '../../hooks/useVoiceSearch';
 import { useAuthToken, usePatientIdentity } from '../../hooks/stubs';
+import { useNotificationFeed } from '../../components/NotificationFeedProvider';
 import { useFocusEffect } from 'expo-router';
 
 const COLORS = {
   primary: '#048256',     // Deep emerald green
-  primaryLight: '#ECFDF5', 
+  primaryLight: '#ECFDF5',
   text: '#030315',        // Dark text
   background: '#F2F1F0',
   white: '#FFFFFF',
@@ -37,6 +38,7 @@ export default function Dashboard() {
   const { voiceTranscript, clearTranscript, requestVoiceModal } = useVoiceSearchContext();
   const token = useAuthToken();
   const { data: identity, isLoading: isIdentityLoading } = usePatientIdentity(token);
+  const { unreadCount } = useNotificationFeed();
   const uid = identity?.uid;
 
   const [loading, setLoading] = useState(true);
@@ -214,15 +216,15 @@ export default function Dashboard() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent} 
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh} 
-            colors={[COLORS.primary]} 
-            tintColor={COLORS.primary} 
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[COLORS.primary]}
+            tintColor={COLORS.primary}
           />
         }
       >
@@ -236,17 +238,17 @@ export default function Dashboard() {
             <Text style={styles.subtitle}>How are you feeling today?</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity 
-              style={styles.iconButton} 
+            <TouchableOpacity
+              style={[styles.iconButton, styles.bellIconButton]}
               onPress={() => router.push('/notifications')}
               activeOpacity={0.7}
-              accessibilityLabel={`Notifications, ${stats?.unreadNotifications || 0} unread`}
+              accessibilityLabel={`Notifications, ${unreadCount} unread`}
             >
-              <Bell size={24} color={COLORS.text} />
-              {(stats?.unreadNotifications > 0) && (
+              <Bell size={20} color={COLORS.text} />
+              {unreadCount > 0 && (
                 <View style={styles.notificationBadge}>
                   <Text style={styles.notificationBadgeText}>
-                    {stats.unreadNotifications > 99 ? '99+' : stats.unreadNotifications}
+                    {unreadCount > 99 ? '99+' : unreadCount}
                   </Text>
                 </View>
               )}
@@ -300,10 +302,10 @@ export default function Dashboard() {
         ) : null}
 
 
-        
+
         {/* Banner */}
-        <TouchableOpacity 
-          style={styles.bannerCard} 
+        <TouchableOpacity
+          style={styles.bannerCard}
           onPress={() => router.push('/doctors')}
           activeOpacity={0.9}
         >
@@ -323,7 +325,7 @@ export default function Dashboard() {
 
           <View style={styles.bannerRightCol}>
             <View style={styles.bannerDoctorCircleBg} />
-            <Image 
+            <Image
               source={require('../../../assets/images/indian_doctor_banner.png')}
               style={styles.bannerDoctorPhoto}
               resizeMode="contain"
@@ -336,7 +338,7 @@ export default function Dashboard() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Quick Links</Text>
           </View>
-          
+
           <View style={styles.quickLinksGrid}>
             <TouchableOpacity style={[styles.quickLinkBox, { backgroundColor: '#E0F2FE' }]} onPress={() => router.push('/medications')}>
               <Activity size={24} color={COLORS.text} style={styles.qlIcon} />
@@ -345,7 +347,7 @@ export default function Dashboard() {
                 <Text style={styles.qlCount}>{stats?.todayScheduled != null ? `${stats.todayTaken ?? 0}/${stats.todayScheduled}` : 'View'}</Text>
               </View>
             </TouchableOpacity>
-            
+
             <TouchableOpacity style={[styles.quickLinkBox, { backgroundColor: '#DCFCE7' }]} onPress={() => router.push('/appointments')}>
               <Calendar size={24} color={COLORS.text} style={styles.qlIcon} />
               <Text style={styles.qlTitle}>Upcoming{'\n'}Appointments</Text>
@@ -353,7 +355,7 @@ export default function Dashboard() {
                 <Text style={styles.qlCount}>{stats?.upcomingAppointments || 0}</Text>
               </View>
             </TouchableOpacity>
-            
+
             <TouchableOpacity style={[styles.quickLinkBox, { backgroundColor: '#FEF3C7' }]} onPress={() => router.push('/prescriptions')}>
               <Pill size={24} color={COLORS.text} style={styles.qlIcon} />
               <Text style={styles.qlTitle}>Active{'\n'}Prescriptions</Text>
@@ -361,7 +363,7 @@ export default function Dashboard() {
                 <Text style={styles.qlCount}>{stats?.activePrescriptions || 0}</Text>
               </View>
             </TouchableOpacity>
-            
+
             <View style={[styles.quickLinkBox, { backgroundColor: '#F3E8FF' }]}>
               <Stethoscope size={24} color={COLORS.text} style={styles.qlIcon} />
               <Text style={styles.qlTitle}>Pharmacy</Text>
@@ -369,7 +371,7 @@ export default function Dashboard() {
             </View>
           </View>
         </View>
-        
+
         {/* Popular Doctors */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -379,7 +381,7 @@ export default function Dashboard() {
                <ChevronRight size={16} color={COLORS.gray} />
             </TouchableOpacity>
           </View>
-          
+
           {doctors.map((doctor, index) => (
               <DoctorResultCard
                 key={doctor?.did || index}
@@ -396,15 +398,15 @@ export default function Dashboard() {
           )}
 
         </View>
-        
+
         {/* Footer Banner */}
         <View style={styles.footerBannerContainer}>
-          <Image 
-            source={require('../../../assets/images/goHealth_footer_banner.png')} 
+          <Image
+            source={require('../../../assets/images/goHealth_footer_banner.png')}
             style={styles.footerBannerImage} resizeMode="cover"
           />
         </View>
-        
+
       </ScrollView>
 
       {/* Search results are a sheet over the dashboard rather than a navigation away, so the
@@ -483,19 +485,20 @@ const styles = StyleSheet.create({
   name: { fontFamily: FONTS.bold },
   subtitle: { fontSize: 13, fontFamily: FONTS.regular, color: COLORS.gray, lineHeight: 18, marginTop: 2 },
   iconButton: { backgroundColor: COLORS.white, position: 'relative', width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  bellIconButton: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#D1D5DB' },
   notificationDot: { position: 'absolute', top: 10, right: 12, width: 8, height: 8, backgroundColor: COLORS.primary, borderRadius: 12, borderWidth: 1, borderColor: COLORS.white },
-  notificationBadge: { 
-    position: 'absolute', 
-    top: -4, 
-    right: -4, 
-    minWidth: 20, 
-    height: 20, 
-    borderRadius: 10, 
-    backgroundColor: '#EF4444', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
+  notificationBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 4,
-    borderWidth: 2, 
+    borderWidth: 2,
     borderColor: COLORS.white,
     elevation: 4,
     shadowColor: '#000',
@@ -503,14 +506,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 2,
   },
-  notificationBadgeText: { 
-    color: '#FFFFFF', 
-    fontSize: 10, 
-    fontFamily: FONTS.bold, 
+  notificationBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontFamily: FONTS.bold,
     textAlign: 'center',
     lineHeight: 12,
   },
-  
+
   searchContainer: { marginHorizontal: 16, flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, height: 56, marginBottom: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3, borderWidth: 1, borderColor: COLORS.lightGray },
   searchIcon: { marginRight: 12 },
   searchInput: { flex: 1, fontFamily: FONTS.regular, fontSize: 14, color: COLORS.text, paddingVertical: 0, height: 48, textAlignVertical: 'center' },
@@ -534,7 +537,7 @@ const styles = StyleSheet.create({
   resultsList: { paddingHorizontal: 16, paddingBottom: 24 },
 
 
-  
+
   bannerCard: {
     marginHorizontal: 16,
     borderRadius: 20,
@@ -633,13 +636,13 @@ const styles = StyleSheet.create({
     height: 175,
     zIndex: 2,
   },
-  
+
   section: { marginBottom: 32, paddingHorizontal: 16 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   sectionTitle: { fontSize: 18, fontFamily: FONTS.bold, color: COLORS.text },
   seeAll: { flexDirection: 'row', alignItems: 'center' },
   seeAllText: { fontSize: 13, fontFamily: FONTS.medium, color: COLORS.gray, marginRight: 2 },
-  
+
   quickLinksGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   quickLinkBox: { width: '48%', backgroundColor: COLORS.white, borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: COLORS.lightGray, position: 'relative', minHeight: 115 },
   qlIcon: { marginBottom: 12 },
@@ -647,7 +650,7 @@ const styles = StyleSheet.create({
   qlSubtitle: { fontSize: 12, fontFamily: FONTS.medium, color: COLORS.gray, marginTop: 4 },
   qlCountBadge: { position: 'absolute', top: 12, right: 12, backgroundColor: COLORS.background, minWidth: 28, height: 28, borderRadius: 12, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
   qlCount: { fontSize: 12, fontFamily: FONTS.bold, color: COLORS.text },
-  
+
   doctorCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.lightGray },
   doctorLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   doctorAvatar: { width: 64, height: 64, borderRadius: 12, backgroundColor: COLORS.lightGray, marginRight: 12 },
@@ -658,14 +661,14 @@ const styles = StyleSheet.create({
   ratingRow: { flexDirection: 'row', alignItems: 'center' },
   ratingText: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text, marginLeft: 4 },
   reviewsText: { color: COLORS.gray, fontFamily: FONTS.regular },
-  
+
   doctorRight: { alignItems: 'flex-end', marginLeft: 8 },
   feeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   feeLabel: { fontSize: 13, fontFamily: FONTS.regular, color: COLORS.gray, marginRight: 4 },
   feeValue: { fontSize: 14, fontFamily: FONTS.bold, color: COLORS.text },
   bookButton: { backgroundColor: COLORS.primary, paddingHorizontal: 16, minHeight: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   bookButtonText: { color: '#FFFFFF', fontFamily: FONTS.bold, fontSize: 13, lineHeight: 18 },
-  
+
   footerBannerContainer: { marginTop: 10, marginBottom: 0, width: '100%', aspectRatio: 0.95, overflow: 'hidden' },
   footerBannerImage: { width: '100%', height: '100%' },
 });

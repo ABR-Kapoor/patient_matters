@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyClerkUser } from '@/lib/clerk-verify';
 import sql from '@/lib/db';
 import { computePaymentSplit } from '@/lib/paymentPolicy';
+import { notifyOnce, NOTIFICATION_URLS } from '@/lib/shared/notifications/inApp';
 
 export async function POST(request: NextRequest) {
   try {
@@ -156,6 +157,33 @@ export async function POST(request: NextRequest) {
       )
       RETURNING *
     `;
+
+    if (status === 'paid' || status === 'failed') {
+      try {
+        const doctorName = doctorData.doctor_name
+          ? `Dr. ${String(doctorData.doctor_name).replace(/^Dr\.?\s+/i, '')}`
+          : 'your doctor';
+        await notifyOnce({
+          uid: userData.uid,
+          title: status === 'paid' ? 'Payment Successful' : 'Payment Failed',
+          body: status === 'paid'
+            ? `INR ${Number(pricing.totalPayable || 0).toFixed(2)} paid for your consultation with ${doctorName}.`
+            : `Your payment of INR ${Number(pricing.totalPayable || 0).toFixed(2)} for ${doctorName} could not be completed.`,
+          type: 'payment',
+          actionUrl: NOTIFICATION_URLS.appointments,
+          eventKey: `payment:${razorpay_payment_id}:${status}`,
+          metadata: {
+            transaction_id: consultationTx.transaction_id,
+            razorpay_payment_id,
+            appointment_id: aid,
+            aid,
+            doctor_name: doctorName,
+          },
+        });
+      } catch (notifErr) {
+        console.error('Payment notification failed:', notifErr);
+      }
+    }
 
     return NextResponse.json({
       success: true,
