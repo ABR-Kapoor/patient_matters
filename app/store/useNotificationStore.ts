@@ -6,7 +6,11 @@ export interface AppNotification {
   body: string;
   type: string;
   is_read: boolean;
-  action_url?: string;
+  action_url?: string | null;
+  metadata?: Record<string, any> | null;
+  image_url?: string | null;
+  avatar_url?: string | null;
+  doctor_name?: string | null;
   created_at: string;
 }
 
@@ -17,6 +21,7 @@ interface NotificationStore {
   lastFetched: number | null;
 
   fetchNotifications: (token: string, force?: boolean) => Promise<void>;
+  addNotification: (notification: AppNotification) => void;
   markAsRead: (id: string, token: string) => Promise<void>;
   markAllAsRead: (token: string) => Promise<void>;
   invalidate: () => void;
@@ -53,6 +58,20 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
     } catch {
       set({ loading: false });
     }
+  },
+
+  addNotification: (notification) => {
+    set((state) => {
+      if (state.notifications.some((n) => n.notification_id === notification.notification_id)) {
+        return state;
+      }
+      const notifications = [notification, ...state.notifications].slice(0, 50);
+      return {
+        notifications,
+        unreadCount: notifications.filter((n) => !n.is_read).length,
+        lastFetched: Date.now(),
+      };
+    });
   },
 
   markAsRead: async (id, token) => {
