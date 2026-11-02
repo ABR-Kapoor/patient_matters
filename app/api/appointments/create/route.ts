@@ -140,6 +140,7 @@ export async function POST(request: NextRequest) {
                     type: 'appointment' as const,
                     actionUrl: NOTIFICATION_URLS.appointments,
                     eventKey: `appointment:${appointment?.aid}:booked`,
+                    pushChannelId: 'doctor-updates',
                     metadata: {
                         image_url: patientProfileImg,
                         avatar_url: patientProfileImg,

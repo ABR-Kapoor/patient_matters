@@ -112,6 +112,7 @@ export async function POST(request: NextRequest) {
           type: 'review' as const,
           actionUrl: NOTIFICATION_URLS.appointments,
           eventKey,
+          pushChannelId: 'doctor-updates',
           metadata: {
             review_id: review.review_id,
             aid,

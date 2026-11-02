@@ -266,6 +266,11 @@ async function reconcileOpenSessions(uid: string): Promise<void> {
         SELECT * FROM closed
     `;
 
+    const [doctorAccount] = rows.length
+        ? await sql`SELECT 1 FROM doctors WHERE uid = ${uid} LIMIT 1`
+        : [];
+    const pushChannel = doctorAccount ? 'doctor-updates' : 'patient-updates';
+
     for (const row of rows) {
         const expired = row.event === 'expired';
         const isInitiator = row.initiator_uid === uid;
@@ -291,6 +296,7 @@ async function reconcileOpenSessions(uid: string): Promise<void> {
                     appointment_id: row.aid,
                     aid: row.aid,
                     event: row.event,
+                    push_channel: pushChannel,
                 },
             });
             if (result.notification) {
@@ -429,6 +435,7 @@ async function notifyCallEvent(
 ): Promise<NotificationRow | null> {
     const recipientUid = session.patient_uid === actorUid ? session.doctor_uid : session.patient_uid;
     if (!recipientUid || recipientUid === actorUid) return null;
+    const pushChannel = recipientUid === context.doctor_uid ? 'doctor-updates' : 'patient-updates';
 
     const actorName = actorUid === context.patient_uid
         ? context.patient_name || 'Patient'
@@ -486,6 +493,7 @@ async function notifyCallEvent(
             peer_name: peerName,
             image_url: actorImage,
             avatar_url: actorImage,
+            push_channel: pushChannel,
         },
     });
     return result.notification;

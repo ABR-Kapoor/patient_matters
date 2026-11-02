@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Image, RefreshControl } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Image, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bell, CheckCircle2, Circle, Clock, Info, User, CheckCheck } from 'lucide-react-native';
-import { fetchWithAuth } from '../../lib/fetchWithAuth';
-import { useAuthToken } from '../../hooks/stubs';
+import { Bell, CheckCircle2, CheckCheck } from 'lucide-react-native';
 import { useRouter, Stack, useFocusEffect } from 'expo-router';
+import { DoctorAvatar } from '../../components/DoctorAvatar';
+import { useNotificationFeed } from '../../components/NotificationFeedProvider';
+import { toMobileNotificationHref } from '../../lib/notificationRoute';
 
 const COLORS = {
   primary: '#048256',
@@ -42,50 +43,19 @@ const formatTime = (value?: string | null) => {
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const token = useAuthToken();
-  
-  const [loading, setLoading] = useState(true);
+  const { notifications, unreadCount, loading, refresh, markAsRead } = useNotificationFeed();
   const [refreshing, setRefreshing] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const unreadCount = notifications.filter(n => !n.is_read).length;
-
-  const fetchNotifications = async () => {
-    try {
-      const response = await fetchWithAuth('/api/patient/notifications', token);
-      const data = await response.json();
-      if (data.success) {
-        setNotifications(data.notifications || []);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
 
   useFocusEffect(
     useCallback(() => {
-      fetchNotifications();
-    }, [token])
+      void refresh();
+    }, [refresh])
   );
 
-  const markAsRead = async (notification_id: string | null = null, markAll: boolean = false) => {
-    try {
-      if (markAll) {
-        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-      } else {
-        setNotifications(prev => prev.map(n => n.notification_id === notification_id ? { ...n, is_read: true } : n));
-      }
-
-      await fetchWithAuth('/api/patient/notifications/read', token, {
-        method: 'PATCH',
-        body: JSON.stringify({ notification_id, markAll })
-      });
-    } catch (err) {
-      console.error(err);
-      fetchNotifications();
-    }
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
   };
 
   if (loading) {
@@ -98,39 +68,44 @@ export default function NotificationsPage() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
-      <Stack.Screen 
-        options={{ 
-          headerTitle: () => (
-            <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 18, fontFamily: FONTS.bold, color: COLORS.text }}>Notifications</Text>
-              <Text style={{ fontSize: 12, fontFamily: FONTS.medium, color: COLORS.gray, marginTop: 1 }}>All notification</Text>
-            </View>
-          ),
+      <Stack.Screen
+        options={{
+          title: 'Notifications',
+          headerTitle: 'Notifications',
+          headerRight: () => null,
           headerTitleAlign: 'center',
-          headerStyle: { backgroundColor: COLORS.background }, 
-          headerShadowVisible: false, 
+          headerStyle: { backgroundColor: COLORS.background },
+          headerShadowVisible: false,
           headerTintColor: COLORS.text,
-          headerRight: () => (
-            notifications.length > 0 ? (
-              <TouchableOpacity 
-                onPress={() => markAsRead(null, true)} 
-                disabled={unreadCount === 0}
-                style={[styles.headerMarkAll, unreadCount === 0 && { opacity: 0.5 }]}
-                activeOpacity={0.7}
-              >
-                <CheckCheck size={15} color={COLORS.primary} style={{ marginRight: 4 }} />
-                <Text style={styles.headerMarkAllText}>Mark all as read</Text>
-              </TouchableOpacity>
-            ) : null
-          )
-        }} 
+          headerTitleStyle: {
+            fontSize: 18,
+            fontFamily: FONTS.bold,
+            color: COLORS.text,
+          },
+        }}
       />
 
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent} 
+      {/* Sub-header below navbar: "All notification" on left, "Mark all as read" on right */}
+      <View style={styles.subHeaderBar}>
+        <Text style={styles.subHeaderTitle}>All notification</Text>
+        {notifications.length > 0 && (
+          <TouchableOpacity
+            onPress={() => markAsRead(null, true)}
+            disabled={unreadCount === 0}
+            style={[styles.markAllButton, unreadCount === 0 && { opacity: 0.4 }]}
+            activeOpacity={0.7}
+          >
+            <CheckCheck size={16} color={COLORS.primary} style={{ marginRight: 5 }} />
+            <Text style={styles.markAllButtonText}>Mark all as read</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchNotifications(); }} colors={[COLORS.primary]} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
       >
         {notifications.length === 0 ? (
@@ -140,45 +115,72 @@ export default function NotificationsPage() {
             <Text style={styles.emptySubtitle}>You have no new notifications.</Text>
           </View>
         ) : (
-          notifications.map(notification => (
-            <TouchableOpacity 
-              key={notification.notification_id} 
-              style={[styles.notificationCard, !notification.is_read && styles.unreadCard]}
-              onPress={() => !notification.is_read && markAsRead(notification.notification_id)}
-            >
-              <View style={styles.avatarContainer}>
-                {notification.image_url ? (
-                  <Image source={{ uri: notification.image_url }} style={styles.avatar} />
-                ) : (
-                  <View style={styles.avatarPlaceholder}>
-                    <Text style={styles.avatarText}>{(notification.title || 'N').charAt(0).toUpperCase()}</Text>
-                  </View>
-                )}
-              </View>
-              
-              <View style={styles.notificationContent}>
-                <Text style={[styles.notificationTitle, !notification.is_read && styles.unreadText]} numberOfLines={1}>
-                  {notification.title || 'Notification'}
-                </Text>
-                <Text style={styles.notificationMessage} numberOfLines={2}>
-                  {notification.body || notification.message || 'No details provided'}
-                </Text>
-              </View>
+          notifications.map(notification => {
+            let meta = notification.metadata;
+            if (typeof meta === 'string') {
+              try { meta = JSON.parse(meta); } catch {}
+            }
+            if (typeof meta === 'string') {
+              try { meta = JSON.parse(meta); } catch {}
+            }
+            const isApt = notification.type === 'appointment' || Boolean(meta?.did) || String(notification.title || '').toLowerCase().includes('appointment');
+            const doctorPic = notification.image_url || meta?.image_url || meta?.avatar_url || null;
+            const doctorSeed = notification.doctor_name || meta?.doctor_name || meta?.did || 'Doctor';
 
-              <View style={styles.rightSide}>
-                <Text style={styles.notificationTime}>
-                  {formatTime(notification.created_at)}
-                </Text>
-                <View style={styles.statusIcon}>
-                  {notification.is_read ? (
-                    <CheckCircle2 size={18} color="#059669" fill="#059669" stroke="#FFF" />
+            return (
+              <TouchableOpacity
+                key={notification.notification_id}
+                style={[styles.notificationCard, !notification.is_read && styles.unreadCard]}
+                onPress={() => {
+                  if (!notification.is_read) {
+                    void markAsRead(notification.notification_id);
+                  }
+                  const href = toMobileNotificationHref(notification.action_url);
+                  if (href) router.push(href);
+                }}
+                activeOpacity={0.85}
+              >
+                <View style={styles.avatarContainer}>
+                  {isApt ? (
+                    <DoctorAvatar
+                      key={notification.notification_id + (doctorPic || '')}
+                      uri={doctorPic}
+                      seed={doctorSeed}
+                      style={styles.avatar}
+                    />
+                  ) : notification.image_url || meta?.image_url ? (
+                    <Image source={{ uri: notification.image_url || meta?.image_url }} style={styles.avatar} />
                   ) : (
-                    <CheckCircle2 size={18} color="#A7F3D0" fill="#A7F3D0" stroke="#FFF" />
+                    <View style={styles.avatarPlaceholder}>
+                      <Text style={styles.avatarText}>{(notification.title || 'N').charAt(0).toUpperCase()}</Text>
+                    </View>
                   )}
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))
+
+                <View style={styles.notificationContent}>
+                  <Text style={[styles.notificationTitle, !notification.is_read && styles.unreadText]} numberOfLines={1}>
+                    {notification.title || 'Notification'}
+                  </Text>
+                  <Text style={styles.notificationMessage} numberOfLines={2}>
+                    {notification.body || notification.message || 'No details provided'}
+                  </Text>
+                </View>
+
+                <View style={styles.rightSide}>
+                  <Text style={styles.notificationTime}>
+                    {formatTime(notification.created_at)}
+                  </Text>
+                  <View style={styles.statusIcon}>
+                    {notification.is_read ? (
+                      <CheckCircle2 size={18} color="#059669" fill="#059669" stroke="#FFF" />
+                    ) : (
+                      <CheckCircle2 size={18} color="#A7F3D0" fill="#A7F3D0" stroke="#FFF" />
+                    )}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -188,13 +190,36 @@ export default function NotificationsPage() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  headerMarkAll: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8 },
-  headerMarkAllText: { color: COLORS.primary, fontSize: 13, fontFamily: FONTS.bold },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
-  emptyState: { 
-    alignItems: 'center', 
+  subHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  subHeaderTitle: {
+    fontSize: 14,
+    fontFamily: FONTS.medium,
+    color: COLORS.gray,
+  },
+  markAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  markAllButtonText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontFamily: FONTS.bold,
+  },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 40 },
+  emptyState: {
+    alignItems: 'center',
     justifyContent: 'center',
-    padding: 32, 
+    padding: 32,
     marginTop: 32,
     borderWidth: 1.5,
     borderColor: '#cbd5e1',
@@ -204,20 +229,44 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 18, fontFamily: FONTS.bold, color: COLORS.text, marginTop: 12, marginBottom: 4 },
   emptySubtitle: { fontSize: 14, color: COLORS.gray, fontFamily: FONTS.regular, textAlign: 'center' },
-  
-  notificationCard: { flexDirection: 'row', backgroundColor: COLORS.white, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 12, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3, alignItems: 'center' },
-  unreadCard: { backgroundColor: COLORS.primaryLight, borderWidth: 1, borderColor: COLORS.primary },
-  
-  avatarContainer: { marginRight: 16 },
-  avatar: { width: 56, height: 56, borderRadius: 12 },
-  avatarPlaceholder: { width: 56, height: 56, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 20, fontFamily: FONTS.bold, color: COLORS.text },
-  
+
+  notificationCard: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    alignItems: 'center'
+  },
+  unreadCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+
+  avatarContainer: { marginRight: 14 },
+  avatar: { width: 52, height: 52, borderRadius: 12, backgroundColor: COLORS.lightGray },
+  avatarPlaceholder: { width: 52, height: 52, borderRadius: 12, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 18, fontFamily: FONTS.bold, color: COLORS.primary },
+
   notificationContent: { flex: 1, justifyContent: 'center', paddingRight: 8 },
   notificationTitle: { fontSize: 16, fontFamily: FONTS.medium, color: COLORS.text, marginBottom: 4 },
   unreadText: { fontFamily: FONTS.bold },
   notificationMessage: { fontSize: 14, color: COLORS.gray, fontFamily: FONTS.regular, lineHeight: 20 },
-  
+
   rightSide: { alignItems: 'flex-end', justifyContent: 'space-between', height: 56 },
   notificationTime: { fontSize: 12, color: COLORS.gray, fontFamily: FONTS.regular },
   statusIcon: { marginTop: 'auto', marginBottom: 2 },

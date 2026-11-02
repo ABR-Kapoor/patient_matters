@@ -215,6 +215,7 @@ export async function POST(request: NextRequest, { params }: { params: { aid: st
           type: 'payment' as const,
           actionUrl: NOTIFICATION_URLS.appointments,
           eventKey: `refund:${refundRequest.refund_id}:requested`,
+          pushChannelId: 'doctor-updates',
           metadata: {
             image_url: patientProfileImg,
             avatar_url: patientProfileImg,

@@ -136,6 +136,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { aid: s
                     type: 'appointment' as const,
                     actionUrl: NOTIFICATION_URLS.appointments,
                     eventKey: `appointment:${aid}:cancelled`,
+                    pushChannelId: 'doctor-updates',
                     metadata: {
                         image_url: patientProfileImg,
                         avatar_url: patientProfileImg,

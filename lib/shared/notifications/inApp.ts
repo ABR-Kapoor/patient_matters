@@ -34,6 +34,7 @@ export interface CreateNotificationInput {
     metadata?: NotificationMetadata;
     eventKey: string;
     push?: boolean;
+    pushChannelId?: string;
 }
 
 export interface NotificationRow {
@@ -76,7 +77,7 @@ export async function createNotificationOnce(
             ${input.body},
             ${input.type},
             ${input.actionUrl || null},
-            ${JSON.stringify(metadata)}::jsonb
+            ${metadata}
         )
         ON CONFLICT (uid, ((metadata ->> 'event_key')))
             WHERE metadata ? 'event_key'
@@ -88,15 +89,20 @@ export async function createNotificationOnce(
     return { notification, created: Boolean(notification) };
 }
 
-export async function dispatchNotificationPush(notification: NotificationRow): Promise<void> {
+export async function dispatchNotificationPush(
+    notification: NotificationRow,
+    channelId?: string,
+): Promise<void> {
     const metadata = notification.metadata || {};
+    const resolvedChannel = channelId
+        || (typeof metadata.push_channel === 'string' ? metadata.push_channel : 'patient-updates');
     const url = notification.action_url
         || (metadata.aid ? NOTIFICATION_URLS.videoCall(String(metadata.aid)) : NOTIFICATION_URLS.notifications);
 
     await sendPushToUid(notification.uid, {
         title: notification.title,
         body: notification.body,
-        channelId: 'patient-updates',
+        channelId: resolvedChannel,
         data: {
             url,
             notification_id: notification.notification_id,
@@ -112,7 +118,7 @@ export async function notifyOnce(
 ): Promise<{ notification: NotificationRow | null; created: boolean }> {
     const result = await createNotificationOnce(sql, input);
     if (result.created && result.notification && input.push !== false) {
-        await dispatchNotificationPush(result.notification);
+        await dispatchNotificationPush(result.notification, input.pushChannelId);
     }
     return result;
 }

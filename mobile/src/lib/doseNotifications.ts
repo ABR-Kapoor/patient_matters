@@ -69,6 +69,17 @@ export async function configureDoseNotifications() {
           contentType: n.AndroidAudioContentType.SONIFICATION,
         },
       });
+      await n.setNotificationChannelAsync('patient-updates', {
+        name: 'Patient Updates',
+        description: 'Appointments, prescriptions, payments and reminders',
+        importance: n.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#048256',
+        enableVibrate: true,
+        showBadge: true,
+        enableLights: true,
+        sound: 'default',
+      });
     } catch (err) {
       console.warn('[doseNotifications] failed to create channel at startup', err);
     }
@@ -232,7 +243,10 @@ export function subscribeToDoseNotificationTaps(
     if (typeof url === 'string' && url.length > 0) navigate(url);
   };
 
-  void n.getLastNotificationResponseAsync().then(redirect);
+  void n.getLastNotificationResponseAsync().then((response) => {
+    redirect(response);
+    if (response) void n.clearLastNotificationResponseAsync?.().catch(() => {});
+  });
 
   const subscription = n.addNotificationResponseReceivedListener(redirect);
   return () => subscription.remove();
