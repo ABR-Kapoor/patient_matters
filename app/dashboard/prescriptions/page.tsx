@@ -306,7 +306,9 @@ export default function PrescriptionsPage() {
                               </p>
                               <div className="flex flex-wrap gap-4 sm:gap-8">
                                 <div>
-                                  <p className="text-[9px] font-bold tracking-widest text-forest-400 uppercase mb-1"><TranslatedText>DOSAGE</TranslatedText></p>
+                                  <div className="mb-1 text-forest-400" role="img" aria-label="Dosage">
+                                    <Pill className="w-3 h-3" aria-hidden="true" />
+                                  </div>
                                   <p className="text-xs font-semibold text-forest-800">{med.dosage}</p>
                                 </div>
                                 <div>

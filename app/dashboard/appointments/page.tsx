@@ -41,6 +41,7 @@ import { useAppointments } from '@/app/hooks/queries/useAppointments';
 import { useCancelAppointment } from '@/app/hooks/mutations/useCancelAppointment';
 import { useRequestRefund } from '@/app/hooks/mutations/useRequestRefund';
 import { usePatientIdentity } from '@/app/hooks/queries/usePatientData';
+import { useCall } from '@/app/components/CallProvider';
 
 /* ──────────────────────────────────────────────────────────
    Formatted Instructions Markdown Helper
@@ -120,6 +121,7 @@ export default function AppointmentsPage() {
   const token = useAuthToken();
   const { translate, currentLocale } = useLanguage();
   const { transliterateName } = useNameTransliteration();
+  const { startCall } = useCall();
 
   // ── Zustand (identity only) ──
   const patientStore = usePatientStore();
@@ -186,23 +188,6 @@ export default function AppointmentsPage() {
     setHasActiveCall(active);
   }, [appointments]);
 
-  const inProgressApt = appointments.find(apt => apt.status === 'in_progress' && apt.mode === 'online' && !isPast(apt));
-
-  useEffect(() => {
-    if (inProgressApt) {
-      const audio = new Audio('/sounds/ringtone.mp3');
-      audio.loop = true;
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(e => console.log('Audio play failed:', e));
-      }
-      return () => {
-        audio.pause();
-        audio.currentTime = 0;
-      };
-    }
-  }, [inProgressApt]);
-
   // Calendar State
   const [viewDate, setViewDate] = useState(new Date());
   const nextMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1));
@@ -212,10 +197,8 @@ export default function AppointmentsPage() {
   const monthName = viewDate.toLocaleString('default', { month: 'long' });
   const year = viewDate.getFullYear();
 
-  // A call is joinable only if doctor has started it (in_progress)
   function canJoinCall(apt: any): boolean {
-    if (apt.status === 'in_progress') return true;
-    return false;
+    return Boolean(apt.callAvailable ?? (apt.status === 'in_progress' && apt.mode === 'online'));
   }
 
   // Helper: parse appointment datetime
@@ -423,7 +406,7 @@ export default function AppointmentsPage() {
               <div className="flex flex-col gap-2 shrink-0">
                 {canJoinCall(nextApt) && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); window.location.href = `/dashboard/video-call/${nextApt.aid}`; }}
+                    onClick={(e) => { e.stopPropagation(); void startCall(nextApt.aid); }}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-white text-forest-700 hover:bg-sage-50 transition-all shadow-lg animate-pulse"
                   >
                     <Video className="w-4 h-4" />
@@ -579,7 +562,7 @@ export default function AppointmentsPage() {
                     {/* Right action */}
                     {canJoin ? (
                       <button
-                        onClick={(e) => { e.stopPropagation(); window.location.href = `/dashboard/video-call/${apt.aid}`; }}
+                        onClick={(e) => { e.stopPropagation(); void startCall(apt.aid); }}
                         className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-forest-900 text-white hover:bg-forest-800 transition-all shrink-0"
                       >
                         <Video className="w-3.5 h-3.5" />
@@ -1068,7 +1051,7 @@ export default function AppointmentsPage() {
                 {/* Join call button if doctor has started the call */}
                 {canJoinCall(selectedAppointment) && (
                   <button
-                    onClick={() => window.location.href = `/dashboard/video-call/${selectedAppointment.aid}`}
+                    onClick={() => { void startCall(selectedAppointment.aid); }}
                     className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-forest-900 text-white font-bold text-sm hover:bg-forest-800 transition-all animate-pulse"
                   >
                     <Video className="w-4 h-4" />
@@ -1178,40 +1161,6 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* ── INCOMING CALL OVERLAY ── */}
-      {inProgressApt && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-forest-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-          <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-500">
-            <div className="relative w-24 h-24 mx-auto mb-6">
-              <div className="absolute inset-0 bg-sage-200 rounded-full animate-ping opacity-75"></div>
-              <div className="relative w-full h-full bg-sage-100 rounded-full flex items-center justify-center border-4 border-white shadow-lg z-10 overflow-hidden">
-                {inProgressApt.doctor?.user?.profileImageUrl ? (
-                  <img src={inProgressApt.doctor.user.profileImageUrl} alt="Doctor" className="w-full h-full object-cover" />
-                ) : (
-                  <Video className="w-10 h-10 text-forest-500" />
-                )}
-              </div>
-            </div>
-            
-            <h2 className="text-2xl font-display text-forest-900 mb-2">
-              <TranslatedText>Incoming Video Call</TranslatedText>
-            </h2>
-            <p className="text-forest-600 mb-8 devanagari-small text-lg font-medium">
-              {doctorNames[inProgressApt.doctor?.user?.name || ''] || inProgressApt.doctor?.user?.name || 'Your Doctor'}
-            </p>
-            
-            <div className="flex gap-4 justify-center">
-              <button 
-                onClick={() => window.location.href = `/dashboard/video-call/${inProgressApt.aid}`}
-                className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white py-3.5 px-6 rounded-xl font-bold shadow-lg shadow-emerald-500/30 transition-all hover:-translate-y-1"
-              >
-                <Video className="w-5 h-5" />
-                <TranslatedText>Accept Call</TranslatedText>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

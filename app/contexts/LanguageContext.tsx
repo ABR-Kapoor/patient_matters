@@ -18,7 +18,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [currentLocale, setCurrentLocale] = useState('en');
   const [isTranslating, setIsTranslating] = useState(false);
   
-  const availableLocales = ['en', 'es', 'fr', 'de', 'hi', 'zh', 'ar', 'pt', 'ja', 'bn', 'te', 'mr', 'ta', 'gu'];
+  const availableLocales = ['en', 'hi'];
 
   // Load saved locale from localStorage
   useEffect(() => {
