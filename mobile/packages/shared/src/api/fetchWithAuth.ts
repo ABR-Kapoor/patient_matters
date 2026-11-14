@@ -56,7 +56,7 @@ export interface FetchWithAuthOptions extends RequestInit {
   timeoutMs?: number;
 }
 
-const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 // --- Core fetch ---------------------------------------------------------------
 // baseUrl: '' for web (same-origin), 'http://192.168.x.x:3000' for mobile

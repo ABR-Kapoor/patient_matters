@@ -8,11 +8,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVoiceSearch } from '@/hooks/useVoiceSearch';
 import { useVoiceSearchContext } from '@/lib/VoiceSearchContext';
 import { ElevenLabsVoiceOrb } from '@/components/ElevenLabsVoiceOrb';
+import { useAuthToken } from '@/hooks/stubs';
+import { fetchWithAuth } from '@/lib/fetchWithAuth';
 
 export default function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const token = useAuthToken();
+  const [unreadCount, setUnreadCount] = useState(0);
   const [isVoiceModalOpen, setVoiceModalOpen] = useState(false);
   const { publishTranscript, isVoiceModalRequested, consumeVoiceModalRequest } = useVoiceSearchContext();
 
@@ -45,6 +49,40 @@ export default function BottomNav() {
     setVoiceModalOpen(false);
   };
 
+  const isCheckingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    const checkUnread = async () => {
+      if (!token || isCheckingRef.current || pathname === '/appointments') return;
+      isCheckingRef.current = true;
+      try {
+        const resolvedToken = typeof token === 'function' ? await token() : token;
+        if (!resolvedToken || !isMounted) return;
+        const res = await fetchWithAuth('/api/patient/appointments', resolvedToken, { timeoutMs: 20000 });
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.appointments) && isMounted) {
+          const totalUnread = data.appointments.reduce((sum: number, apt: any) => {
+            return sum + Number(apt.unread_messages_count || apt.unreadMessagesCount || 0);
+          }, 0);
+          setUnreadCount(totalUnread);
+        }
+      } catch {
+        // silent
+      } finally {
+        isCheckingRef.current = false;
+      }
+    };
+
+    const initialTimer = setTimeout(checkUnread, 1500);
+    const interval = setInterval(checkUnread, 30000);
+    return () => {
+      isMounted = false;
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
+  }, [token, pathname]);
+
   // Hide on certain screens
   if (pathname.includes('video-call') || pathname.includes('book-appointment') || pathname.includes('chat')) {
     return null;
@@ -57,8 +95,8 @@ export default function BottomNav() {
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom + 16, 32) }]}>
-      <View style={styles.navBar}>
+    <View style={styles.container}>
+      <View style={[styles.navBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
         <TouchableOpacity style={styles.navItem} onPress={() => navigateTo('/')}>
           <Home size={24} color={pathname === '/' ? COLORS.primary : COLORS.gray} />
           <Text style={[styles.navText, pathname === '/' && styles.activeText]}>Home</Text>
@@ -72,7 +110,16 @@ export default function BottomNav() {
         <View style={styles.centerSpace} pointerEvents="none" />
 
         <TouchableOpacity style={styles.navItem} onPress={() => navigateTo('/appointments')}>
-          <Calendar size={24} color={pathname === '/appointments' ? COLORS.primary : COLORS.gray} />
+          <View style={{ position: 'relative' }}>
+            <Calendar size={24} color={pathname === '/appointments' ? COLORS.primary : COLORS.gray} />
+            {unreadCount > 0 && (
+              <View style={styles.navBadge}>
+                <Text style={styles.navBadgeText}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
           <Text style={[styles.navText, pathname === '/appointments' && styles.activeText]}>Visits</Text>
         </TouchableOpacity>
 
@@ -84,14 +131,11 @@ export default function BottomNav() {
       
       <View style={styles.centerButtonOuter}>
         <TouchableOpacity 
-          style={[
-            styles.centerButton,
-            isVoiceModalOpen && { backgroundColor: COLORS.text, shadowColor: COLORS.text }
-          ]} 
+          style={styles.centerButton} 
           onPress={handleOpenVoice}
           activeOpacity={0.85}
         >
-          <ElevenLabsVoiceOrb size={56} isListening={isListening || isVoiceModalOpen} />
+          <ElevenLabsVoiceOrb size={54} isListening={isListening || isVoiceModalOpen} />
         </TouchableOpacity>
       </View>
 
@@ -143,36 +187,58 @@ const styles = StyleSheet.create({
   },
   navBar: {
     flexDirection: 'row',
-    height: 65,
+    minHeight: 76,
     backgroundColor: COLORS.white,
-    marginHorizontal: 16,
-    borderRadius: 24,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
   },
   navItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100%',
+    paddingVertical: 6,
   },
   navText: {
-    fontSize: 11.5,
+    fontSize: 12.5,
     fontWeight: '600',
     fontFamily: FONTS.semiBold,
     color: COLORS.gray,
-    marginTop: 2,
+    marginTop: 5,
   },
   activeText: {
     color: COLORS.primary,
     fontWeight: '700',
     fontFamily: FONTS.bold,
+  },
+  navBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    backgroundColor: '#EF4444',
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  navBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9.5,
+    fontFamily: FONTS.bold,
+    fontWeight: '700',
   },
   centerSpace: {
     flex: 1.2,
@@ -182,25 +248,26 @@ const styles = StyleSheet.create({
   },
   centerButtonOuter: {
     position: 'absolute',
-    top: -24, // Pop it up nicely
+    top: -24,
     alignSelf: 'center',
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: '#F2F1F0', // Mask to create the cutout effect
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
-    elevation: 10,
   },
   centerButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'visible',
+    overflow: 'hidden',
   },
   modalOverlay: {
     flex: 1,

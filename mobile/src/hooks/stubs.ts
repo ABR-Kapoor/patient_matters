@@ -113,7 +113,15 @@ export function usePatientIdentity(token: any) {
         const profileRes = await fetchWithAuth('/api/patient/profile', getAuthToken);
         const profile = profileRes.ok ? await profileRes.json() : null;
         const dbName = profile?.user?.name;
-        setData({ ...baseData, name: dbName || baseData.name, uid: body.uid, pid: body.pid || body.uid });
+        const dbImage = profile?.user?.profile_image_url || profile?.user?.profileImageUrl;
+        setData({
+          ...baseData,
+          name: dbName || baseData.name,
+          profileImageUrl: dbImage || baseData.profileImageUrl,
+          profile_image_url: dbImage || baseData.profileImageUrl,
+          uid: body.uid,
+          pid: body.pid || body.uid,
+        });
       } catch {
         setData({ ...baseData, uid: body.uid, pid: body.pid || body.uid });
       }

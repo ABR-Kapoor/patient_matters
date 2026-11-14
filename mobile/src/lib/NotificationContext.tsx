@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CheckCircle2, AlertTriangle, XCircle, Info, X } from 'lucide-react-native';
@@ -50,6 +50,7 @@ interface ToastMessage {
 
 interface AlertModalState extends AlertOptions {
   visible: boolean;
+  autoDismissMs?: number | null;
 }
 
 interface NotificationContextType {
@@ -73,9 +74,32 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     message: '',
     buttons: [],
     type: 'info',
+    autoDismissMs: null,
   });
 
-  const showToast = useCallback((title: string, message?: string, type: ToastType = 'success', duration = 3500) => {
+  const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAlertTimer = useCallback(() => {
+    if (alertTimerRef.current) {
+      clearTimeout(alertTimerRef.current);
+      alertTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleAlertDismiss = useCallback((durationMs: number | null) => {
+    clearAlertTimer();
+    if (durationMs === null) return;
+    alertTimerRef.current = setTimeout(() => {
+      alertTimerRef.current = null;
+      setAlertState((prev) => ({ ...prev, visible: false }));
+    }, durationMs);
+  }, [clearAlertTimer]);
+
+  useEffect(() => {
+    return () => clearAlertTimer();
+  }, [clearAlertTimer]);
+
+  const showToast = useCallback((title: string, message?: string, type: ToastType = 'success', duration = 4000) => {
     const id = Math.random().toString(36).substring(7);
     setToasts((prev) => [...prev, { id, title, message, type }]);
 
@@ -98,8 +122,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       message,
       buttons: finalButtons,
       type: inferredType,
+      autoDismissMs: 4000,
     });
-  }, []);
+    scheduleAlertDismiss(4000);
+  }, [scheduleAlertDismiss]);
 
   const showConfirm = useCallback((
     title: string,
@@ -118,16 +144,29 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         { text: cancelText, style: 'cancel' },
         { text: confirmText, style: isDestructive ? 'destructive' : 'default', onPress: onConfirm },
       ],
+      autoDismissMs: null,
     });
-  }, []);
+    scheduleAlertDismiss(null);
+  }, [scheduleAlertDismiss]);
 
-  // Bind to global exports
-  globalShowToast = showToast;
-  globalShowAlert = showAlert;
-  globalShowConfirm = showConfirm;
+  useEffect(() => {
+    globalShowToast = showToast;
+    globalShowAlert = showAlert;
+    globalShowConfirm = showConfirm;
+    return () => {
+      globalShowToast = null;
+      globalShowAlert = null;
+      globalShowConfirm = null;
+    };
+  }, [showToast, showAlert, showConfirm]);
+
+  const closeAlert = useCallback(() => {
+    clearAlertTimer();
+    setAlertState((prev) => ({ ...prev, visible: false }));
+  }, [clearAlertTimer]);
 
   const handleButtonPress = (btn?: AlertButton) => {
-    setAlertState((prev) => ({ ...prev, visible: false }));
+    closeAlert();
     if (btn && btn.onPress) {
       setTimeout(() => btn.onPress!(), 50);
     }
@@ -193,24 +232,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         </View>
       </SafeAreaView>
 
-      {/* Top-Anchored Alert / Confirmation / Error Modal */}
+      {/* Centered Alert / Confirmation / Error Modal */}
       <Modal
         visible={alertState.visible}
         transparent
-        animationType="slide"
-        onRequestClose={() => setAlertState((prev) => ({ ...prev, visible: false }))}
+        animationType="fade"
+        onRequestClose={closeAlert}
       >
         <View style={styles.modalOverlay}>
-          <SafeAreaView edges={['top']} style={styles.topModalSafeArea}>
-            <View style={styles.topModalCard}>
-              {/* Header row with Icon, Title and Close Button */}
+          <View style={styles.centerModalCard}>
+            {/* Header row with Icon, Title and Close Button */}
             <View style={styles.sheetHeader}>
               <View style={styles.headerTitleRow}>
                 {getAlertIcon()}
                 <Text style={styles.sheetTitle} numberOfLines={2}>{alertState.title}</Text>
               </View>
               <TouchableOpacity
-                onPress={() => setAlertState((prev) => ({ ...prev, visible: false }))}
+                onPress={closeAlert}
                 style={styles.closeBtn}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
@@ -256,8 +294,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                 );
               })}
             </View>
-            </View>
-          </SafeAreaView>
+          </View>
         </View>
       </Modal>
     </NotificationContext.Provider>
@@ -324,18 +361,15 @@ const styles = StyleSheet.create({
     padding: 4,
   },
 
-  // Top-Anchored Alert & Confirmation Modal Structure
+  // Centered Alert & Confirmation Modal Structure
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    justifyContent: 'flex-start',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
   },
-  topModalSafeArea: {
-    width: '100%',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-  },
-  topModalCard: {
+  centerModalCard: {
     width: '100%',
     backgroundColor: COLORS.white,
     borderRadius: 20,
@@ -343,10 +377,10 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 12,
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.05)',
   },

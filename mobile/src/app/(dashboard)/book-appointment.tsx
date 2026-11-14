@@ -91,6 +91,7 @@ if (did) {
             const rawName = String(found?.user?.name || found?.name || 'Doctor');
             const docName = rawName.toLowerCase().startsWith('dr') ? rawName : `Dr. ${rawName}`;
             setDoctor({
+              did: found.did || found.id || did,
               name: docName,
               specialization: Array.isArray(found?.specialization) ? found.specialization.join(', ') : String(found?.specialization || 'General'),
               avgRating: found?.avg_rating != null ? Number(found.avg_rating) : null,
@@ -101,6 +102,7 @@ if (did) {
           } else {
             // Fallback if not found
             setDoctor({
+              did: did,
               name: 'Unknown Doctor',
               specialization: 'Specialist',
               avgRating: null,
@@ -175,19 +177,32 @@ if (did) {
       + `rzp.open();</script></body></html>`;
   };
 
+  const formatLocalDate = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const finalizeBooking = async (order: any, data: any) => {
     try {
+      const scheduledDateStr = formatLocalDate(date);
+      const effectiveMode = mode === 'clinic' ? 'offline' : (mode || 'online');
+      const doctorDid = doctor?.did || did;
+
       // 3. Create Appointment
       const apptPayload = {
-        did: doctor?.did || did,
-        scheduled_date: date.toISOString().split('T')[0],
+        did: doctorDid,
+        scheduled_date: scheduledDateStr,
         scheduled_time: selectedTime,
-        mode: mode,
-        chief_complaint: complaint,
+        mode: effectiveMode,
+        chief_complaint: complaint.trim() || 'General consultation',
         symptoms: symptomsText.split(',').map(s => s.trim()).filter(Boolean),
         payment_id: data.razorpay_payment_id,
         payment_status: 'paid',
-        status: 'pending'
+        status: 'scheduled',
+        razorpay_order_id: data.razorpay_order_id,
+        razorpay_payment_id: data.razorpay_payment_id,
       };
 
       const apptRes = await fetchWithAuth('/api/appointments/create', token, {
@@ -196,33 +211,43 @@ if (did) {
         body: JSON.stringify(apptPayload)
       });
 
-      const apptData = await apptRes.json();
+      const apptData = await apptRes.json().catch(() => ({}));
       if (!apptRes.ok || !apptData.appointment) {
-        showAlert('Booking Error', 'Payment succeeded but appointment creation failed. Please contact support.');
+        console.error('Create appointment error response:', apptData);
+        showAlert('Booking Error', apptData.error || 'Payment succeeded but appointment creation failed. Please contact support.');
         return;
       }
 
       // 4. Record Transaction
-      await fetchWithAuth('/api/payments/record-transaction', token, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          aid: apptData.appointment.aid,
-          did: doctor?.did || did,
-          common_payment_id: order.common_payment_id,
-          promo_code: promoCode,
-          razorpay_order_id: data.razorpay_order_id,
-          razorpay_payment_id: data.razorpay_payment_id,
-          razorpay_signature: data.razorpay_signature,
-          status: 'paid',
-          amount: order.order.amount
-        })
-      });
+      try {
+        await fetchWithAuth('/api/payments/record-transaction', token, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            aid: apptData.appointment.aid,
+            did: doctorDid,
+            common_payment_id: order?.common_payment_id || data.razorpay_order_id,
+            promo_code: promoCode,
+            razorpay_order_id: data.razorpay_order_id,
+            razorpay_payment_id: data.razorpay_payment_id,
+            razorpay_signature: data.razorpay_signature,
+            status: 'paid',
+            amount: order?.order?.amount || 0
+          })
+        });
+      } catch (txnErr) {
+        console.warn('Failed to record transaction after appointment creation:', txnErr);
+      }
 
-      showAlert('Booking Confirmed!', 'Your appointment has been successfully scheduled.', [{ text: 'Done', onPress: () => router.back() }], 'success');
-    } catch (e) {
-      console.error(e);
-      showAlert('Booking Error', 'An error occurred while finalizing your appointment booking.');
+      showAlert(
+        'Booking Confirmed!',
+        'Your appointment has been successfully scheduled.',
+        [{ text: 'View Appointments', onPress: () => router.replace('/appointments') }],
+        'success'
+      );
+    } catch (e: any) {
+      console.error('Finalize booking exception:', e);
+      showAlert('Booking Error', e?.message || 'An error occurred while finalizing your appointment booking.');
     }
   };
 

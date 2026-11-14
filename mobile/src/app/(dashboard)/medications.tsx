@@ -8,6 +8,7 @@ import { Stack } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { downloadMedicationSchedulePdf } from '../../lib/pdfGenerator';
 import { useNotification } from '../../lib/NotificationContext';
+import { MedicineIcon3D } from '../../components/MedicineIcon3D';
 
 const COLORS = {
   primary: '#048256',
@@ -152,11 +153,14 @@ export default function MedicationsPage() {
     <View key={item.adherence_id} style={styles.medCard}>
       <View style={styles.medHeader}>
         <View style={styles.medIconContainer}>
-          <Pill size={24} color="#059669" />
+          <MedicineIcon3D size={26} />
         </View>
         <View style={styles.medInfo}>
           <Text style={styles.medName}>{item.medicine_name}</Text>
-          <Text style={styles.medDosage}>{item.dosage} â€¢ {item.frequency}</Text>
+          <View style={styles.medDosageRow}>
+            <MedicineIcon3D size={14} style={{ marginRight: 4 }} />
+            <Text style={styles.medDosage}>{item.dosage} â€¢ {item.frequency}</Text>
+          </View>
           <View style={styles.timeRow}>
             <Clock size={14} color="#6b7280" />
             <Text style={styles.timeText}>{item.scheduled_time.substring(0, 5)}</Text>
@@ -330,7 +334,8 @@ const styles = StyleSheet.create({
   medIconContainer: { width: 48, height: 48, borderRadius: 12, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   medInfo: { flex: 1 },
   medName: { fontSize: 16, fontFamily: FONTS.bold, color: COLORS.text, marginBottom: 4 },
-  medDosage: { fontSize: 13, color: '#059669', fontFamily: FONTS.medium, marginBottom: 6 },
+  medDosageRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
+  medDosage: { fontSize: 13, color: '#059669', fontFamily: FONTS.medium },
   timeRow: { flexDirection: 'row', alignItems: 'center' },
   timeText: { fontSize: 12, color: COLORS.gray, fontFamily: FONTS.medium, marginLeft: 6 },
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.background },

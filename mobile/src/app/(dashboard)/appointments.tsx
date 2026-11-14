@@ -8,6 +8,7 @@ import { TranslatedText } from '../../components/TranslatedText';
 import { useAuthToken, usePatientIdentity } from '../../hooks/stubs';
 import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { useNotification } from '../../lib/NotificationContext';
+import { useCall } from '../../components/CallProvider';
 
 const COLORS = {
   primary: '#048256',
@@ -50,14 +51,15 @@ export default function AppointmentsPage() {
   const { data: identity, isLoading: isIdentityLoading } = usePatientIdentity(token);
   const uid = identity?.uid;
   const { showToast, showAlert, showConfirm } = useNotification();
+  const { session, startCall } = useCall();
   
   const [loading, setLoading] = useState(true);
+  const [startingAid, setStartingAid] = useState<string | null>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'completed' | 'cancelled'>('upcoming');
   const [refreshing, setRefreshing] = useState(false);
   const [refundReason, setRefundReason] = useState('');
   const [showRefundInput, setShowRefundInput] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
 
   // AURASUTRA-REVIEWS:appointments_review_actions
   // Completed appointments carry the caller's own review inline (myReview), so
@@ -69,39 +71,43 @@ export default function AppointmentsPage() {
     router.push(`/rate-doctor?aid=${aid}`);
   };
 
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const isFetchingRef = useRef(false);
 
-  // The call only opens once the doctor has confirmed, so a scheduled appointment is
-  // never joinable. The 5-minute lead time still applies to confirmed appointments.
-  const canJoinCall = (apt: any, currentTime: number) => {
-    if (apt.status !== 'confirmed' && apt.status !== 'in_progress') return false;
-    const dateStr = String(apt.scheduledDate || '').slice(0, 10);
-    const timeStr = String(apt.scheduledTime || '').slice(0, 5);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !/^\d{2}:\d{2}$/.test(timeStr)) return false;
-    const start = new Date(`${dateStr}T${timeStr}:00`).getTime();
-    const fiveMinBefore = start - 5 * 60 * 1000;
-    return currentTime >= fiveMinBefore;
+  const handleCall = async (aid: string) => {
+    if (isNavigatingRef.current || startingAid) return;
+    if (session?.aid === aid && session.status === 'active') {
+      isNavigatingRef.current = true;
+      router.push(`/video-call/${aid}`);
+      return;
+    }
+    setStartingAid(aid);
+    const started = await startCall(aid);
+    setStartingAid(null);
+    if (!started) {
+      showAlert('Call unavailable', 'The doctor is already on another call or this appointment cannot be called right now.');
+      return;
+    }
+    isNavigatingRef.current = true;
+    router.push(`/video-call/${aid}`);
   };
 
   // `silent` is used by the background poll: a failed refresh every 15s must not
   // spam the user with an alert, it should just leave the last good list on screen.
-  const fetchAppointments = async (silent = false) => {
-    if (!uid) return;
-    // Resolve the Clerk JWT before firing the request. getToken() returns null
-    // while Clerk is hydrating — without this guard the request fires with no
-    // Authorization header and the server returns 401.
-    const resolvedToken = typeof token === 'function' ? await token() : token;
-    if (!resolvedToken) {
-      console.warn('[appointments] token is null – skipping fetch');
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
+  const fetchAppointments = useCallback(async (silent = false) => {
+    if (!uid || isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
-      const response = await fetchWithAuth('/api/patient/appointments', resolvedToken);
+      // Resolve the Clerk JWT before firing the request. getToken() returns null
+      // while Clerk is hydrating — without this guard the request fires with no
+      // Authorization header and the server returns 401.
+      const resolvedToken = typeof token === 'function' ? await token() : token;
+      if (!resolvedToken) {
+        console.warn('[appointments] token is null – skipping fetch');
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      const response = await fetchWithAuth('/api/patient/appointments', resolvedToken, { timeoutMs: 15000 });
       const data = await response.json();
       
       if (data.success) {
@@ -111,10 +117,20 @@ export default function AppointmentsPage() {
       console.error(err);
       if (!silent) showAlert('Fetch Failed', 'Could not load your appointments.');
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [showAlert, token, uid]);
+
+  // Poll for appointment updates and unread chat messages.
+  useEffect(() => {
+    if (!uid) return;
+    const pollInterval = setInterval(() => {
+      void fetchAppointments(true);
+    }, 15000);
+    return () => clearInterval(pollInterval);
+  }, [fetchAppointments, uid]);
 
   useFocusEffect(
     useCallback(() => {
@@ -369,13 +385,32 @@ const isUpcoming = activeTab === 'upcoming';
                   >
                     <MessageSquare size={16} color="#048256" style={{ marginRight: 6 }} />
                     <Text style={styles.chatButtonText}>Chat</Text>
+                    {Number(apt.unread_messages_count || apt.unreadMessagesCount || 0) > 0 && (
+                      <View style={styles.chatBadge}>
+                        <Text style={styles.chatBadgeText}>
+                          {(apt.unread_messages_count || apt.unreadMessagesCount) > 99
+                            ? '99+'
+                            : (apt.unread_messages_count || apt.unreadMessagesCount)}
+                        </Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 )}
 
-                {apt.mode === 'online' && (apt.status === 'confirmed' || canJoinCall(apt, now)) && (
-                  <TouchableOpacity style={styles.joinButton} onPress={() => { if (isNavigatingRef.current) return; isNavigatingRef.current = true; router.push(`/video-call/${apt.aid}`); }}>
-                    <Video size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.joinButtonText}>Call</Text>
+                {apt.mode === 'online' && (apt.status === 'confirmed' || apt.status === 'in_progress') && (apt.call_available ?? apt.callAvailable) && (
+                  <TouchableOpacity
+                    style={[styles.joinButton, startingAid === apt.aid && { opacity: 0.7 }]}
+                    disabled={Boolean(startingAid)}
+                    onPress={() => { void handleCall(apt.aid); }}
+                  >
+                    {startingAid === apt.aid ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
+                    ) : (
+                      <Video size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    )}
+                    <Text style={styles.joinButtonText}>
+                      {apt.status === 'in_progress' ? 'Rejoin' : 'Call'}
+                    </Text>
                   </TouchableOpacity>
                 )}
               </>
@@ -526,8 +561,24 @@ const styles = StyleSheet.create({
   actionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' },
   cancelButton: { paddingHorizontal: 14, backgroundColor: COLORS.dangerLight, alignItems: 'center', justifyContent: 'center', borderRadius: 8, height: 36 },
   cancelButtonText: { color: COLORS.danger, fontSize: 13, fontFamily: FONTS.bold },
-  chatButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, backgroundColor: COLORS.primaryLight, borderWidth: 1, borderColor: '#A7F3D0', justifyContent: 'center', borderRadius: 8, height: 36 },
+  chatButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, backgroundColor: COLORS.primaryLight, borderWidth: 1, borderColor: '#A7F3D0', justifyContent: 'center', borderRadius: 8, height: 36, position: 'relative' },
   chatButtonText: { color: COLORS.primary, fontSize: 13, fontFamily: FONTS.bold },
+  chatBadge: {
+    marginLeft: 6,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontFamily: FONTS.bold,
+    fontWeight: '700',
+  },
   joinButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, backgroundColor: COLORS.primary, justifyContent: 'center', borderRadius: 8, height: 36 },
   joinButtonText: { color: '#FFFFFF', fontSize: 13, fontFamily: FONTS.bold },
   

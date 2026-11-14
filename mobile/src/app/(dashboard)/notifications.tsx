@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Image, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bell, CheckCircle2, CheckCheck } from 'lucide-react-native';
+import { Bell, CheckCircle2, CheckCheck, Pill } from 'lucide-react-native';
 import { useRouter, Stack, useFocusEffect } from 'expo-router';
 import { DoctorAvatar } from '../../components/DoctorAvatar';
+import { MedicineIcon3D } from '../../components/MedicineIcon3D';
 import { useNotificationFeed } from '../../components/NotificationFeedProvider';
 import { toMobileNotificationHref } from '../../lib/notificationRoute';
 
@@ -68,29 +69,29 @@ export default function NotificationsPage() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
-      <Stack.Screen
-        options={{
+      <Stack.Screen 
+        options={{ 
           title: 'Notifications',
           headerTitle: 'Notifications',
           headerRight: () => null,
           headerTitleAlign: 'center',
-          headerStyle: { backgroundColor: COLORS.background },
-          headerShadowVisible: false,
+          headerStyle: { backgroundColor: COLORS.background }, 
+          headerShadowVisible: false, 
           headerTintColor: COLORS.text,
           headerTitleStyle: {
             fontSize: 18,
             fontFamily: FONTS.bold,
             color: COLORS.text,
           },
-        }}
+        }} 
       />
 
       {/* Sub-header below navbar: "All notification" on left, "Mark all as read" on right */}
       <View style={styles.subHeaderBar}>
         <Text style={styles.subHeaderTitle}>All notification</Text>
         {notifications.length > 0 && (
-          <TouchableOpacity
-            onPress={() => markAsRead(null, true)}
+          <TouchableOpacity 
+            onPress={() => markAsRead(null, true)} 
             disabled={unreadCount === 0}
             style={[styles.markAllButton, unreadCount === 0 && { opacity: 0.4 }]}
             activeOpacity={0.7}
@@ -101,8 +102,8 @@ export default function NotificationsPage() {
         )}
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent} 
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
@@ -124,12 +125,18 @@ export default function NotificationsPage() {
               try { meta = JSON.parse(meta); } catch {}
             }
             const isApt = notification.type === 'appointment' || Boolean(meta?.did) || String(notification.title || '').toLowerCase().includes('appointment');
+            const isMed =
+              notification.type === 'reminder' ||
+              Boolean(meta?.medicine_name) ||
+              /medicine|dose|medication|reminder/i.test(
+                `${notification.title || ''} ${notification.body || notification.message || ''}`
+              );
             const doctorPic = notification.image_url || meta?.image_url || meta?.avatar_url || null;
             const doctorSeed = notification.doctor_name || meta?.doctor_name || meta?.did || 'Doctor';
 
             return (
-              <TouchableOpacity
-                key={notification.notification_id}
+              <TouchableOpacity 
+                key={notification.notification_id} 
                 style={[styles.notificationCard, !notification.is_read && styles.unreadCard]}
                 onPress={() => {
                   if (!notification.is_read) {
@@ -152,11 +159,15 @@ export default function NotificationsPage() {
                     <Image source={{ uri: notification.image_url || meta?.image_url }} style={styles.avatar} />
                   ) : (
                     <View style={styles.avatarPlaceholder}>
-                      <Text style={styles.avatarText}>{(notification.title || 'N').charAt(0).toUpperCase()}</Text>
+                      {isMed ? (
+                        <MedicineIcon3D size={28} />
+                      ) : (
+                        <Text style={styles.avatarText}>{(notification.title || 'N').charAt(0).toUpperCase()}</Text>
+                      )}
                     </View>
                   )}
                 </View>
-
+                
                 <View style={styles.notificationContent}>
                   <Text style={[styles.notificationTitle, !notification.is_read && styles.unreadText]} numberOfLines={1}>
                     {notification.title || 'Notification'}
@@ -215,11 +226,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: FONTS.bold,
   },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 40 },
-  emptyState: {
-    alignItems: 'center',
+  scrollContent: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 120 },
+  emptyState: { 
+    alignItems: 'center', 
     justifyContent: 'center',
-    padding: 32,
+    padding: 32, 
     marginTop: 32,
     borderWidth: 1.5,
     borderColor: '#cbd5e1',
@@ -229,26 +240,26 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 18, fontFamily: FONTS.bold, color: COLORS.text, marginTop: 12, marginBottom: 4 },
   emptySubtitle: { fontSize: 14, color: COLORS.gray, fontFamily: FONTS.regular, textAlign: 'center' },
-
-  notificationCard: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.white,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 16,
+  
+  notificationCard: { 
+    flexDirection: 'row', 
+    backgroundColor: COLORS.white, 
+    paddingVertical: 14, 
+    paddingHorizontal: 16, 
+    marginBottom: 12, 
+    borderRadius: 16, 
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-    alignItems: 'center'
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 2 }, 
+    shadowOpacity: 0.06, 
+    shadowRadius: 8, 
+    elevation: 2, 
+    alignItems: 'center' 
   },
-  unreadCard: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1.5,
+  unreadCard: { 
+    backgroundColor: COLORS.white, 
+    borderWidth: 1.5, 
     borderColor: COLORS.primary,
     shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 3 },
@@ -256,17 +267,17 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 3,
   },
-
+  
   avatarContainer: { marginRight: 14 },
   avatar: { width: 52, height: 52, borderRadius: 12, backgroundColor: COLORS.lightGray },
   avatarPlaceholder: { width: 52, height: 52, borderRadius: 12, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 18, fontFamily: FONTS.bold, color: COLORS.primary },
-
+  
   notificationContent: { flex: 1, justifyContent: 'center', paddingRight: 8 },
   notificationTitle: { fontSize: 16, fontFamily: FONTS.medium, color: COLORS.text, marginBottom: 4 },
   unreadText: { fontFamily: FONTS.bold },
   notificationMessage: { fontSize: 14, color: COLORS.gray, fontFamily: FONTS.regular, lineHeight: 20 },
-
+  
   rightSide: { alignItems: 'flex-end', justifyContent: 'space-between', height: 56 },
   notificationTime: { fontSize: 12, color: COLORS.gray, fontFamily: FONTS.regular },
   statusIcon: { marginTop: 'auto', marginBottom: 2 },

@@ -15,7 +15,6 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import {
-  ChevronLeft,
   Send,
   Video,
   Phone,
@@ -24,10 +23,12 @@ import {
   Clock,
   AlertCircle,
   FileText,
+  User,
 } from 'lucide-react-native';
 import { useAuthToken, usePatientIdentity } from '../../../hooks/stubs';
 import { fetchWithAuth } from '../../../lib/fetchWithAuth';
 import { DoctorAvatar } from '../../../components/DoctorAvatar';
+import { useCall } from '../../../components/CallProvider';
 
 const COLORS = {
   primary: '#048256',
@@ -66,6 +67,7 @@ interface ChatMessage {
   media_url?: string | null;
   created_at: string;
   read_at?: string | null;
+  status?: 'sending' | 'sent';
 }
 
 export default function AppointmentChatScreen() {
@@ -74,10 +76,11 @@ export default function AppointmentChatScreen() {
   const router = useRouter();
   const token = useAuthToken();
   const { data: identity } = usePatientIdentity(token);
+  const { session, startCall } = useCall();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [startingCall, setStartingCall] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
   const [inputContent, setInputContent] = useState('');
   const [appointmentInfo, setAppointmentInfo] = useState<any>(null);
   const [canChat, setCanChat] = useState(false);
@@ -109,7 +112,24 @@ export default function AppointmentChatScreen() {
       const res = await fetchWithAuth(`/api/appointments/${aid}/messages`, token);
       const data = await res.json();
       if (data?.success) {
-        setMessages(data.messages || []);
+        const serverMessages: ChatMessage[] = data.messages || [];
+        setMessages((prev) => {
+          // Keep optimistic messages that haven't been reconciled yet
+          const pendingOptimistic = prev.filter(
+            (p) =>
+              p.status === 'sending' &&
+              !serverMessages.some(
+                (s) =>
+                  s.message_id === p.message_id ||
+                  (s.content === p.content &&
+                    Math.abs(
+                      new Date(s.created_at).getTime() - new Date(p.created_at).getTime()
+                    ) < 10000)
+              )
+          );
+          return [...serverMessages, ...pendingOptimistic];
+        });
+
         setAppointmentInfo(data.appointment || null);
         setCanChat(!!data.canChat);
         if (!data.canChat) {
@@ -130,7 +150,7 @@ export default function AppointmentChatScreen() {
     void fetchMessages(true);
     pollTimerRef.current = setInterval(() => {
       void fetchMessages(false);
-    }, 3000);
+    }, 2500);
 
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
@@ -139,12 +159,12 @@ export default function AppointmentChatScreen() {
 
   const handleSend = async (textToSend?: string) => {
     const text = (textToSend || inputContent).trim();
-    if (!text || sending || !aid || !token) return;
+    if (!text || !aid || !token) return;
 
-    setSending(true);
+    // Clear input immediately so user experience is snappy
     setInputContent('');
 
-    // Optimistic message
+    // Instant optimistic message - displayed IMMEDIATELY without delay
     const tempId = `temp_${Date.now()}`;
     const optimisticMessage: ChatMessage = {
       message_id: tempId,
@@ -154,9 +174,15 @@ export default function AppointmentChatScreen() {
       sender_name: identity?.name || 'You',
       content: text,
       created_at: new Date().toISOString(),
+      status: 'sending',
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
+
+    // Instantly scroll down so the message is visible right away
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    });
 
     try {
       const res = await fetchWithAuth(`/api/appointments/${aid}/messages`, token, {
@@ -166,24 +192,36 @@ export default function AppointmentChatScreen() {
       const data = await res.json();
       if (data?.success && data.message) {
         setMessages((prev) =>
-          prev.map((m) => (m.message_id === tempId ? data.message : m))
+          prev.map((m) => (m.message_id === tempId ? { ...data.message, status: 'sent' } : m))
         );
       } else {
-        // Rollback on failure
-        setMessages((prev) => prev.filter((m) => m.message_id !== tempId));
-        alert(data?.error || 'Failed to send message');
+        setMessages((prev) =>
+          prev.map((m) => (m.message_id === tempId ? { ...m, status: 'sent' } : m))
+        );
+        void fetchMessages(false);
       }
-    } catch {
-      setMessages((prev) => prev.filter((m) => m.message_id !== tempId));
-      alert('Could not send message. Please check your connection.');
+    } catch (err) {
+      console.warn('Failed to send message:', err);
+      setMessages((prev) =>
+        prev.map((m) => (m.message_id === tempId ? { ...m, status: 'sent' } : m))
+      );
     } finally {
-      setSending(false);
+      requestAnimationFrame(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      });
     }
   };
 
-  const handleStartCall = () => {
-    if (!aid) return;
-    router.push(`/video-call/${aid}`);
+  const handleStartCall = async () => {
+    if (!aid || startingCall) return;
+    if (session?.aid === aid && session.status === 'active') {
+      router.push(`/video-call/${aid}`);
+      return;
+    }
+    setStartingCall(true);
+    const started = await startCall(String(aid));
+    setStartingCall(false);
+    if (started) router.push(`/video-call/${aid}`);
   };
 
   const renderMessageItem = ({ item }: { item: ChatMessage }) => {
@@ -192,6 +230,8 @@ export default function AppointmentChatScreen() {
       hour: '2-digit',
       minute: '2-digit',
     });
+
+    const patientImageUrl = identity?.profile_image_url || identity?.profileImageUrl || null;
 
     return (
       <View
@@ -203,7 +243,7 @@ export default function AppointmentChatScreen() {
         {!isPatient && (
           <View style={styles.senderAvatar}>
             <DoctorAvatar
-              uri={null}
+              uri={appointmentInfo?.doctorImage || appointmentInfo?.doctorAvatarUrl || null}
               seed={appointmentInfo?.doctorName || 'Dr'}
               style={{ width: 32, height: 32, borderRadius: 16 }}
             />
@@ -240,12 +280,30 @@ export default function AppointmentChatScreen() {
             {isPatient && (
               <CheckCheck
                 size={14}
-                color={item.read_at ? '#93C5FD' : 'rgba(255,255,255,0.7)'}
-                style={{ marginLeft: 4 }}
+                color={item.read_at ? '#38BDF8' : 'rgba(255,255,255,0.7)'}
+                style={{
+                  marginLeft: 4,
+                  opacity: item.status === 'sending' ? 0.5 : 1,
+                }}
               />
             )}
           </View>
         </View>
+        {isPatient && (
+          <View style={styles.senderAvatar}>
+            {patientImageUrl ? (
+              <Image
+                source={{ uri: patientImageUrl }}
+                style={{ width: 32, height: 32, borderRadius: 16 }}
+                accessibilityLabel="Patient profile photo"
+              />
+            ) : (
+              <View style={styles.patientAvatarPlaceholder}>
+                <User size={16} color={COLORS.gray} />
+              </View>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -256,14 +314,6 @@ export default function AppointmentChatScreen() {
 
       {/* Rapido-Style Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-          accessibilityLabel="Back"
-        >
-          <ChevronLeft size={22} color={COLORS.text} />
-        </TouchableOpacity>
-
         {/* Doctor Profile Image */}
         <View style={styles.avatarContainer}>
           <DoctorAvatar
@@ -294,14 +344,19 @@ export default function AppointmentChatScreen() {
           </View>
         </View>
 
-        {canChat && (
+        {(appointmentInfo?.call_available ?? appointmentInfo?.callAvailable) && (
           <TouchableOpacity
-            style={styles.callActionButton}
-            onPress={handleStartCall}
+            style={[styles.callActionButton, startingCall && { opacity: 0.7 }]}
+            onPress={() => { void handleStartCall(); }}
             activeOpacity={0.8}
+            disabled={startingCall}
           >
-            <Video size={18} color="#FFFFFF" />
-            <Text style={styles.callActionText}>Call</Text>
+            {startingCall ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Video size={18} color="#FFFFFF" />
+            )}
+            <Text style={styles.callActionText}>{session?.aid === aid && session.status === 'active' ? 'Rejoin' : 'Call'}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -401,14 +456,10 @@ export default function AppointmentChatScreen() {
                   !inputContent.trim() && styles.sendButtonDisabled,
                 ]}
                 onPress={() => handleSend()}
-                disabled={!inputContent.trim() || sending}
+                disabled={!inputContent.trim()}
                 activeOpacity={0.8}
               >
-                {sending ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Send size={18} color="#FFFFFF" />
-                )}
+                <Send size={18} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
           </View>
@@ -431,16 +482,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.lightGray,
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
   },
   avatarContainer: {
     position: 'relative',
@@ -590,7 +631,16 @@ const styles = StyleSheet.create({
   },
   senderAvatar: {
     marginRight: 8,
+    marginLeft: 8,
     marginBottom: 4,
+  },
+  patientAvatarPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.lightGray,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   bubble: {
     maxWidth: '78%',

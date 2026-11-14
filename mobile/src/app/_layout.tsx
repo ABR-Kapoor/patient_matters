@@ -1,9 +1,11 @@
+import '../lib/cryptoPolyfill';
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/expo';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Platform, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
   configureDoseNotifications,
@@ -13,13 +15,12 @@ import {
 import { LanguageProvider } from '../lib/LanguageContext';
 import { NotificationProvider } from '../lib/NotificationContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { CallProvider } from '../components/CallProvider';
 import { registerPushNotifications, subscribeToPushTokenChanges } from '../lib/pushNotifications';
 import { toMobileNotificationHref } from '../lib/notificationRoute';
 
 export { ErrorBoundary };
 
-
-import { Platform } from 'react-native';
 const tokenCache = {
   async getToken(key: string) {
     try {
@@ -48,6 +49,8 @@ const tokenCache = {
 };
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+SplashScreen.setOptions({ duration: 0, fade: false });
 
 function RootLayoutNav() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -91,7 +94,7 @@ function RootLayoutNav() {
 
   if (!isLoaded) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f6f7f3' }}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -116,7 +119,7 @@ export default function RootLayout() {
 
   if (!fontsLoaded && !fontError) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f6f7f3' }}>
         <ActivityIndicator size="large" color="#048256" />
       </View>
     );
@@ -126,13 +129,15 @@ export default function RootLayout() {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" />
-        <ErrorBoundary>
-          <LanguageProvider>
-            <NotificationProvider>
-              <Slot />
-            </NotificationProvider>
-          </LanguageProvider>
-        </ErrorBoundary>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f6f7f3', padding: 32 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 8, textAlign: 'center' }}>
+            Configuration Error
+          </Text>
+          <Text style={{ fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20 }}>
+            Missing Clerk publishable key (EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY).{'\n\n'}
+            Add this key to your EAS build secrets and rebuild the app.
+          </Text>
+        </View>
       </SafeAreaProvider>
     );
   }
@@ -145,7 +150,9 @@ export default function RootLayout() {
           <ClerkLoaded>
             <LanguageProvider>
               <NotificationProvider>
-                <RootLayoutNav />
+                <CallProvider>
+                  <RootLayoutNav />
+                </CallProvider>
               </NotificationProvider>
             </LanguageProvider>
           </ClerkLoaded>

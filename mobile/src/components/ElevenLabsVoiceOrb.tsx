@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const CREATIVE_ICON = require('../../assets/images/creative-5.webp');
+const NOISE_TEXTURE = require('../../assets/images/noise.png');
 
 interface ElevenLabsVoiceOrbProps {
   size?: number;
@@ -18,9 +19,8 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
   showModalCircleRings = false,
   style,
 }) => {
-  // Continuous smooth, slow fluid rotation of the background & mesh colors
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  const counterRotateAnim = useRef(new Animated.Value(0)).current;
+  // Horizontal wave fluid motion animation (left to right, right to left)
+  const waveAnim = useRef(new Animated.Value(0)).current;
 
   // Concentric circle animations for modal mode (like 11labs voice agent soundwave aura rings)
   const ringAnim1 = useRef(new Animated.Value(0)).current;
@@ -28,27 +28,35 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
   const ringAnim3 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Significantly reduced rotation speed (relaxed, calm fluid motion)
-    const rotateLoop = Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: isListening ? 18000 : 28000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
+    let isCancelled = false;
+    const duration = isListening ? 3800 : 6000;
 
-    const counterRotateLoop = Animated.loop(
-      Animated.timing(counterRotateAnim, {
-        toValue: 1,
-        duration: isListening ? 24000 : 36000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
+    // Smooth horizontal sway from left to right, then smoothly back from right to left
+    const runWave = () => {
+      if (isCancelled) return;
+      Animated.sequence([
+        // Left to right
+        Animated.timing(waveAnim, {
+          toValue: 1,
+          duration,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        // Right to left
+        Animated.timing(waveAnim, {
+          toValue: 0,
+          duration,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished && !isCancelled) {
+          runWave();
+        }
+      });
+    };
 
-    rotateLoop.start();
-    counterRotateLoop.start();
+    runWave();
 
     // Modal concentric circular waves
     let ringLoop1: Animated.CompositeAnimation | null = null;
@@ -56,13 +64,18 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
     let ringLoop3: Animated.CompositeAnimation | null = null;
 
     if (showModalCircleRings) {
+      ringAnim1.setValue(0);
+      ringAnim2.setValue(0);
+      ringAnim3.setValue(0);
+
       ringLoop1 = Animated.loop(
         Animated.timing(ringAnim1, {
           toValue: 1,
           duration: 3200,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
-        })
+        }),
+        { resetBeforeIteration: true }
       );
 
       ringLoop2 = Animated.loop(
@@ -74,7 +87,8 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-        ])
+        ]),
+        { resetBeforeIteration: true }
       );
 
       ringLoop3 = Animated.loop(
@@ -86,7 +100,8 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-        ])
+        ]),
+        { resetBeforeIteration: true }
       );
 
       ringLoop1.start();
@@ -95,22 +110,38 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
     }
 
     return () => {
-      rotateLoop.stop();
-      counterRotateLoop.stop();
+      isCancelled = true;
+      waveAnim.stopAnimation();
       if (ringLoop1) ringLoop1.stop();
       if (ringLoop2) ringLoop2.stop();
       if (ringLoop3) ringLoop3.stop();
     };
   }, [isListening, showModalCircleRings]);
 
-  const spin = rotateAnim.interpolate({
+  // Gentle horizontal sway (left to right, right to left)
+  const flowX = waveAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+    outputRange: [-7, 7], // flows from left (-7px) to right (+7px)
   });
 
-  const counterSpin = counterRotateAnim.interpolate({
+  const counterFlowX = waveAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['360deg', '0deg'],
+    outputRange: [7, -7], // counter-flows from right (+7px) to left (-7px)
+  });
+
+  const flowY = waveAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, -1.5, 0], // subtle breathing rise in the center
+  });
+
+  const tilt = waveAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-6deg', '6deg'], // organic tilt with wave
+  });
+
+  const counterTilt = waveAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['6deg', '-6deg'],
   });
 
   // Modal animated rings interpolations
@@ -213,7 +244,7 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
             {
               width: size * 1.6,
               height: size * 1.6,
-              transform: [{ rotate: spin }],
+              transform: [{ translateX: flowX }, { rotate: tilt }],
             },
           ]}
         >
@@ -225,7 +256,7 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
           />
         </Animated.View>
 
-        {/* Layer 2: Counter-rotating secondary gradient */}
+        {/* Layer 2: Counter-drifting secondary gradient */}
         <Animated.View
           pointerEvents="none"
           style={[
@@ -234,7 +265,7 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
               width: size * 1.6,
               height: size * 1.6,
               opacity: 0.65,
-              transform: [{ rotate: counterSpin }],
+              transform: [{ translateX: counterFlowX }, { rotate: counterTilt }],
             },
           ]}
         >
@@ -246,14 +277,18 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
           />
         </Animated.View>
 
-        {/* Layer 3: creative-5.webp with slow fluid rotation inside the fixed circular mask */}
+        {/* Layer 3: creative-5.webp with slow fluid sway left to right and right to left */}
         <Animated.View
           pointerEvents="none"
           style={{
             position: 'absolute',
             width: imageCoverSize,
             height: imageCoverSize,
-            transform: [{ rotate: spin }],
+            transform: [
+              { translateX: flowX },
+              { translateY: flowY },
+              { rotate: tilt },
+            ],
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -278,7 +313,7 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
               width: size * 1.5,
               height: size * 1.5,
               opacity: 0.2,
-              transform: [{ rotate: counterSpin }],
+              transform: [{ translateX: counterFlowX }, { rotate: counterTilt }],
             },
           ]}
         >
@@ -287,6 +322,26 @@ export const ElevenLabsVoiceOrb: React.FC<ElevenLabsVoiceOrbProps> = ({
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+
+        {/* Layer 5: Film grain / noise texture overlay with dynamic micro-shimmer */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.gradientMeshLayer,
+            {
+              width: size * 1.5,
+              height: size * 1.5,
+              opacity: 0.16,
+              transform: [{ translateX: counterFlowX }, { rotate: counterTilt }],
+            },
+          ]}
+        >
+          <Image
+            source={NOISE_TEXTURE}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
           />
         </Animated.View>
       </View>
