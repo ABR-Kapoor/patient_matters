@@ -1,6 +1,9 @@
 import sql from '@/lib/db';
 import { sendPushToUid } from './push';
 
+export const PATIENT_PUSH_CHANNEL = 'patient-updates-v2';
+export const DOCTOR_PUSH_CHANNEL = 'doctor-updates-v2';
+
 export type NotificationType =
     | 'appointment'
     | 'prescription'
@@ -95,7 +98,7 @@ export async function dispatchNotificationPush(
 ): Promise<void> {
     const metadata = notification.metadata || {};
     const resolvedChannel = channelId
-        || (typeof metadata.push_channel === 'string' ? metadata.push_channel : 'patient-updates');
+        || (typeof metadata.push_channel === 'string' ? metadata.push_channel : PATIENT_PUSH_CHANNEL);
     const url = notification.action_url
         || (metadata.aid ? NOTIFICATION_URLS.videoCall(String(metadata.aid)) : NOTIFICATION_URLS.notifications);
 

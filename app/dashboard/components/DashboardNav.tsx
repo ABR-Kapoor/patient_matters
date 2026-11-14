@@ -8,6 +8,7 @@ import {
   Stethoscope,
   Pill,
   UserCircle,
+  Wallet,
 } from 'lucide-react';
 import { TranslatedText } from '@/app/components/TranslatedText';
 
@@ -15,6 +16,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', iconName: 'LayoutDashboard' },
   { name: 'Find Doctors', href: '/dashboard/find-doctors', iconName: 'Stethoscope' },
   { name: 'Appointments', href: '/dashboard/appointments', iconName: 'Calendar' },
+  { name: 'Transactions', href: '/dashboard/transactions', iconName: 'Wallet' },
   { name: 'Prescriptions', href: '/dashboard/prescriptions', iconName: 'Pill' },
   { name: 'Profile', href: '/dashboard/profile', iconName: 'UserCircle' },
 ];
@@ -25,6 +27,7 @@ const iconMap = {
   Stethoscope,
   Pill,
   UserCircle,
+  Wallet,
 };
 
 interface DashboardNavProps {

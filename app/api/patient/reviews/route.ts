@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { requirePatient, requireOwnAppointment } from '@/lib/authz';
-import { notifyMany, NOTIFICATION_URLS, type CreateNotificationInput } from '@/lib/shared/notifications/inApp';
+import { DOCTOR_PUSH_CHANNEL, notifyMany, NOTIFICATION_URLS, type CreateNotificationInput } from '@/lib/shared/notifications/inApp';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
           type: 'review' as const,
           actionUrl: NOTIFICATION_URLS.appointments,
           eventKey,
-          pushChannelId: 'doctor-updates',
+          pushChannelId: DOCTOR_PUSH_CHANNEL,
           metadata: {
             review_id: review.review_id,
             aid,

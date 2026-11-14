@@ -4,7 +4,7 @@ import { generateAppointmentCreatedEmail, generatePrescriptionCreatedEmail, gene
 import { formatDate } from '@/lib/formatDate';
 import sql from '@/lib/db';
 import { requireSessionUser, maskAccountNumber } from '@/lib/authz';
-import { notifyOnce, NOTIFICATION_URLS } from '@/lib/shared/notifications/inApp';
+import { DOCTOR_PUSH_CHANNEL, notifyOnce, NOTIFICATION_URLS } from '@/lib/shared/notifications/inApp';
 import { timingSafeEqual } from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -498,7 +498,7 @@ export async function POST(request: NextRequest) {
                     type: 'appointment',
                     actionUrl: NOTIFICATION_URLS.appointments,
                     eventKey: doctorEventKey,
-                    pushChannelId: 'doctor-updates',
+                    pushChannelId: DOCTOR_PUSH_CHANNEL,
                     metadata: {
                         appointment_id: appointmentId,
                         aid: appointmentId,
