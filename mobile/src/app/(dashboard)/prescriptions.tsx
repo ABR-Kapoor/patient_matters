@@ -9,6 +9,7 @@ import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { MarkdownText } from '../../components/MarkdownText';
 import { DoctorAvatar } from '../../components/DoctorAvatar';
 import { downloadPrescriptionPdf } from '../../lib/pdfGenerator';
+import { MedicineIcon3D } from '../../components/MedicineIcon3D';
 
 const COLORS = {
   primary: '#048256',
@@ -83,7 +84,7 @@ export default function PrescriptionsPage() {
         setError((err && err.message) || 'Failed to fetch prescriptions');
       }
     } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
     }
   }, []);
 
@@ -206,11 +207,11 @@ export default function PrescriptionsPage() {
                 <Text style={styles.sectionTitle}>Medicines ({(prescription.medicines && prescription.medicines.length) || 0})</Text>
                 {(prescription.medicines || []).map((med: any, i: number) => (
                   <View key={i} style={styles.medicineItem}>
-                    <Pill size={16} color={COLORS.primary} style={{ marginTop: 2 }} />
+                    <MedicineIcon3D size={18} style={{ marginTop: 2, marginRight: 6 }} />
                     <View style={styles.medicineDetails}>
                       <Text style={styles.medicineName}>{med.name}</Text>
                       <Text style={styles.medicineInstructions}>
-                        {med.dosage} � {med.frequency} � {med.duration}
+                        {[med.dosage, med.frequency, med.duration].filter(Boolean).join(' • ')}
                       </Text>
                       {!!med.notes && <Text style={styles.medicineNotes}>Note: {med.notes}</Text>}
                     </View>
@@ -263,3 +264,4 @@ const styles = StyleSheet.create({
   instructionsSection: { padding: 12, backgroundColor: '#fffbeb', borderRadius: 12, borderWidth: 1, borderColor: '#fde68a' },
   instructionsText: { fontSize: 14, color: '#92400e', fontFamily: FONTS.medium, lineHeight: 20 },
 });
+

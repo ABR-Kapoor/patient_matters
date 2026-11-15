@@ -1,8 +1,10 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
+import type { DevicePushToken } from 'expo-notifications';
 import { ensureNotificationPermission } from './doseNotifications';
 import { fetchWithAuth } from './fetchWithAuth';
+import { ensurePushChannel } from './notificationChannels';
 
 type NotificationsModule = typeof import('expo-notifications');
 
@@ -13,8 +15,6 @@ try {
 } catch (error) {
   console.warn('[pushNotifications] expo-notifications unavailable', error);
 }
-
-const PUSH_CHANNEL_ID = 'patient-updates';
 
 async function projectId(): Promise<string | undefined> {
   return (
@@ -43,38 +43,38 @@ async function savePushToken(
   }
 }
 
-export async function registerPushNotifications(
+// Resolves the Expo push token and stores it against the signed-in patient.
+// `devicePushToken` is only passed when re-registering from the native token
+// listener: it lets us skip getDevicePushTokenAsync, which would emit the same
+// listener again and loop indefinitely.
+async function registerExpoToken(
   getToken: () => Promise<string | null>,
+  devicePushToken?: DevicePushToken,
 ): Promise<void> {
   const notifications = Notifications;
   if (!notifications || !Device.isDevice) return;
 
+  const granted = await ensureNotificationPermission();
+  if (!granted) return;
+
+  await ensurePushChannel(notifications);
+
+  const project = await projectId();
+  const expoPushToken = await notifications.getExpoPushTokenAsync({
+    ...(project ? { projectId: project } : {}),
+    ...(devicePushToken ? { devicePushToken } : {}),
+  });
+
+  if (!expoPushToken?.data) return;
+
+  await savePushToken(expoPushToken.data, getToken);
+}
+
+export async function registerPushNotifications(
+  getToken: () => Promise<string | null>,
+): Promise<void> {
   try {
-    const granted = await ensureNotificationPermission();
-    if (!granted) return;
-
-    const project = await projectId();
-    const expoPushToken = await notifications.getExpoPushTokenAsync(
-      project ? { projectId: project } : undefined,
-    );
-
-    if (!expoPushToken?.data) return;
-
-    if (Platform.OS === 'android') {
-      await notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
-        name: 'Patient Updates',
-        description: 'Appointments, prescriptions, payments and reminders',
-        importance: notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#048256',
-        enableVibrate: true,
-        showBadge: true,
-        enableLights: true,
-        sound: 'default',
-      });
-    }
-
-    await savePushToken(expoPushToken.data, getToken);
+    await registerExpoToken(getToken);
   } catch (error) {
     // Expo Go on Android cannot issue remote push tokens; this is expected there.
     console.warn('[pushNotifications] registration skipped', error);
@@ -87,8 +87,11 @@ export function subscribeToPushTokenChanges(
   const notifications = Notifications;
   if (!notifications) return () => {};
 
-  const subscription = notifications.addPushTokenListener(({ data }) => {
-    void savePushToken(data, getToken).catch((error) => {
+  // This listener fires with the *native* FCM/APNs token, not the Expo push
+  // token. Saving it directly always failed backend validation, so refresh the
+  // Expo token derived from it instead.
+  const subscription = notifications.addPushTokenListener((devicePushToken) => {
+    void registerExpoToken(getToken, devicePushToken).catch((error) => {
       console.warn('[pushNotifications] token refresh failed', error);
     });
   });

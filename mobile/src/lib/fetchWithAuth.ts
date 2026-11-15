@@ -7,14 +7,21 @@ import Constants from 'expo-constants';
 // instead reuse the host the JS bundle was actually served from: if the device
 // could load the bundle from Metro, the very same machine is reachable on that
 // exact address for the backend too. EXPO_PUBLIC_API_URL still provides the port
+const PRODUCTION_API_URL = 'https://www.aurasutra.org';
+
 // (and remains the source of truth for production, where there is no dev server).
 function resolveApiBaseUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL;
   const normalized = configured ? configured.replace(/\/$/, '') : '';
 
-  // If a public tunnel or remote backend is explicitly configured (e.g. Cloudflare tunnel),
+  // If a public tunnel or remote backend is explicitly configured (e.g. Cloudflare tunnel or production URL),
   // preserve it directly instead of substituting the local Metro IP.
-  if (normalized && (normalized.startsWith('https://') || normalized.includes('trycloudflare.com'))) {
+  if (normalized && (
+    normalized.startsWith('https://') ||
+    normalized.includes('aurasutra.org') ||
+    normalized.includes('trycloudflare.com') ||
+    normalized.includes('vercel.app')
+  )) {
     return normalized;
   }
 
@@ -36,11 +43,11 @@ function resolveApiBaseUrl(): string {
   if (__DEV__ && Platform.OS !== 'web') {
     console.warn(
       '[fetchWithAuth] EXPO_PUBLIC_API_URL is not set and no dev-server host could be detected. ' +
-      'Set it in .env (e.g. http://192.168.x.x:3000) and rebuild.'
+      'Falling back to production URL.'
     );
   }
 
-  return Platform.OS === 'web' ? '' : '';
+  return Platform.OS === 'web' ? '' : PRODUCTION_API_URL;
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
@@ -49,7 +56,7 @@ export const API_BASE_URL = resolveApiBaseUrl();
 // and every caller keeps its spinner up forever. The backend can sit on a dead
 // database for its own connect_timeout before giving up, so the client has to have
 // its own deadline. Callers can override it per request via `options.timeoutMs`.
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 30000;
 
 export class RequestTimeoutError extends Error {
   readonly endpoint: string;

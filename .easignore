@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.expo
+dist
+web-build
+*.log
+scratch
+mobile/node_modules
+mobile/.expo
+mobile/dist-web
+mobile/dist

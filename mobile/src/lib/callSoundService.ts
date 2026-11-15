@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 let expoAudio: any = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -11,25 +9,49 @@ try {
 class CallSoundService {
   private ringPlayer: any = null;
   private chimePlayer: any = null;
+  private audioModeReady: Promise<void> | null = null;
+  private moduleWarningShown = false;
   private isRinging: boolean = false;
 
+  private ensureAudioMode(): Promise<void> {
+    if (!expoAudio?.setAudioModeAsync) return Promise.resolve();
+    if (!this.audioModeReady) {
+      this.audioModeReady = Promise.resolve(
+        expoAudio.setAudioModeAsync({ playsInSilentMode: true })
+      ).catch((err) => {
+        console.warn('[CallSoundService] Failed to configure audio mode:', err);
+      });
+    }
+    return this.audioModeReady;
+  }
+
   async startWaitingRing() {
-    if (this.isRinging) return;
-    this.isRinging = true;
+    if (this.isRinging || this.ringPlayer?.playing) return;
+
+    if (!expoAudio?.createAudioPlayer) {
+      if (!this.moduleWarningShown) {
+        this.moduleWarningShown = true;
+        console.warn(
+          '[CallSoundService] expo-audio native module is unavailable, so the call ringtone cannot play. Rebuild the development client with `npx expo run:android` (or `npx expo run:ios`).'
+        );
+      }
+      return;
+    }
 
     try {
-      if (expoAudio?.createAudioPlayer) {
-        if (!this.ringPlayer) {
-          this.ringPlayer = expoAudio.createAudioPlayer(
-            require('../../assets/sounds/call_ringing.wav'),
-            { loop: true }
-          );
-        }
-        if (this.ringPlayer?.play) {
-          this.ringPlayer.play();
-        }
+      await this.ensureAudioMode();
+      if (!this.ringPlayer) {
+        this.ringPlayer = expoAudio.createAudioPlayer(
+          require('../../assets/sounds/call_ringing.wav')
+        );
       }
+      // createAudioPlayer options do not include loop; it is an AudioPlayer property.
+      this.ringPlayer.loop = true;
+      this.ringPlayer.volume = 1;
+      this.ringPlayer.play();
+      this.isRinging = true;
     } catch (err) {
+      this.isRinging = false;
       console.warn('[CallSoundService] Failed to play waiting ring:', err);
     }
   }
@@ -39,6 +61,9 @@ class CallSoundService {
     try {
       if (this.ringPlayer?.pause) {
         this.ringPlayer.pause();
+      }
+      if (this.ringPlayer?.seekTo) {
+        this.ringPlayer.seekTo(0);
       }
     } catch (err) {
       console.warn('[CallSoundService] Failed to stop waiting ring:', err);
@@ -53,8 +78,7 @@ class CallSoundService {
       if (expoAudio?.createAudioPlayer) {
         if (!this.chimePlayer) {
           this.chimePlayer = expoAudio.createAudioPlayer(
-            require('../../assets/sounds/join_chime.wav'),
-            { loop: false }
+            require('../../assets/sounds/join_chime.wav')
           );
         } else if (this.chimePlayer?.seekTo) {
           this.chimePlayer.seekTo(0);

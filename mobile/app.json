@@ -7,6 +7,10 @@
     "icon": "./assets/images/app-icon.png",
     "scheme": "aurasutrapatient",
     "userInterfaceStyle": "automatic",
+    "androidNavigationBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#048256"
+    },
     "ios": {
       "icon": "./assets/images/app-icon.png",
       "infoPlist": {
@@ -23,6 +27,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.aurasutrapatient",
+      "versionCode": 1,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
@@ -37,7 +42,8 @@
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_CAMERA",
-        "android.permission.FOREGROUND_SERVICE_MICROPHONE"
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "web": {
@@ -49,7 +55,7 @@
       [
         "expo-notifications",
         {
-          "defaultChannel": "medication-reminders",
+          "defaultChannel": "patient-updates-v2",
           "color": "#048256"
         }
       ],
@@ -58,9 +64,10 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#5c85d9",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#f6f7f3",
+          "image": "./assets/images/splash-blank.png",
+          "imageWidth": 1,
+          "resizeMode": "contain"
         }
       ],
       "@clerk/expo",
@@ -84,9 +91,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "b607510d-2304-4822-9e66-4e94ae2e01c5"
+        "projectId": "61634f7e-2d40-4ace-99b4-2c38d635c45b"
       }
     },
-    "owner": "bluxh"
+    "owner": "biryanidev"
   }
 }

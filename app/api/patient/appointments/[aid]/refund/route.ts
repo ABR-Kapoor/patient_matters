@@ -3,7 +3,7 @@ import sql from '@/lib/db';
 import { sendEmail } from '@/lib/shared/notifications/email';
 import { generateRefundRequestForAdminEmail, generateRefundRequestForDoctorEmail, generateRefundRequestForPatientEmail } from '@/lib/shared/notifications/templates';
 import { requirePatient, requireOwnAppointment } from '@/lib/authz';
-import { notifyMany, NOTIFICATION_URLS, type CreateNotificationInput } from '@/lib/shared/notifications/inApp';
+import { DOCTOR_PUSH_CHANNEL, notifyMany, NOTIFICATION_URLS, type CreateNotificationInput } from '@/lib/shared/notifications/inApp';
 
 export async function POST(request: NextRequest, { params }: { params: { aid: string } }) {
   const identity = await requirePatient();
@@ -215,7 +215,7 @@ export async function POST(request: NextRequest, { params }: { params: { aid: st
           type: 'payment' as const,
           actionUrl: NOTIFICATION_URLS.appointments,
           eventKey: `refund:${refundRequest.refund_id}:requested`,
-          pushChannelId: 'doctor-updates',
+          pushChannelId: DOCTOR_PUSH_CHANNEL,
           metadata: {
             image_url: patientProfileImg,
             avatar_url: patientProfileImg,

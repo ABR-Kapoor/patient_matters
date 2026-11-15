@@ -34,9 +34,9 @@ export default function DashboardLayout() {
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
-    (async () => {
+    const timer = setTimeout(async () => {
       try {
-        const response = await fetchWithAuth('/api/patient/adherence', token);
+        const response = await fetchWithAuth('/api/patient/adherence', token, { timeoutMs: 25000 });
         const data = await response.json();
         if (cancelled || !data?.success) return;
         const records: DoseRecord[] = Array.isArray(data.adherence?.all) ? data.adherence.all : [];
@@ -44,9 +44,10 @@ export default function DashboardLayout() {
       } catch (err) {
         console.warn('Dose reminder sync failed', err);
       }
-    })();
+    }, 2000);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [token]);
 
@@ -133,6 +134,7 @@ export default function DashboardLayout() {
       <Stack.Screen name="prescriptions" options={{ title: 'Prescriptions', headerShown: true }} />
       <Stack.Screen name="profile" options={{ title: 'Profile', headerShown: true }} />
       <Stack.Screen name="notifications" options={{ title: 'Notifications', headerShown: true }} />
+      <Stack.Screen name="transactions" options={{ title: 'Transactions', headerShown: true }} />
       <Stack.Screen name="chat/[aid]" options={{ title: 'Chat with Doctor', headerShown: false }} />
       <Stack.Screen name="video-call/[aid]" options={{ title: 'Video Call', headerShown: false }} />
       </Stack>

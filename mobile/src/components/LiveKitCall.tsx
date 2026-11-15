@@ -183,33 +183,19 @@ function CallControls({
 
   const flipCam = useCallback(async () => {
     const nextFront = !isFrontCamera;
-    onToggleFrontCamera(nextFront);
+    const facingMode = nextFront ? 'user' : 'environment';
 
     try {
-      // 1. Get the local video track publication
       const videoPub = localParticipant.getTrackPublication(Track.Source.Camera);
-      const localTrack: any = videoPub?.track;
+      const localTrack = videoPub?.videoTrack ?? undefined;
 
-      // 2. React Native WebRTC mediaStreamTrack has an internal _switchCamera() method
-      const mediaStreamTrack = localTrack?.mediaStreamTrack;
-      if (mediaStreamTrack && typeof mediaStreamTrack._switchCamera === 'function') {
-        mediaStreamTrack._switchCamera();
-        return;
+      if (localTrack) {
+        await localTrack.restartTrack({ facingMode });
+      } else {
+        await localParticipant.setCameraEnabled(true, { facingMode });
       }
 
-      // 3. If restartTrack is available on LocalVideoTrack
-      if (localTrack && typeof localTrack.restartTrack === 'function') {
-        await localTrack.restartTrack({
-          facingMode: nextFront ? 'user' : 'environment',
-        });
-        return;
-      }
-
-      // 4. Fallback: unpublish & republish with new facingMode
-      await localParticipant.setCameraEnabled(false);
-      await localParticipant.setCameraEnabled(true, {
-        facingMode: nextFront ? 'user' : 'environment',
-      });
+      onToggleFrontCamera(nextFront);
     } catch (e) {
       console.error('[call] Camera flip failed:', e);
     }

@@ -3,7 +3,9 @@ import { isJoinableStatus } from '@/lib/authz';
 import {
     createNotificationOnce,
     dispatchNotificationPush,
+    DOCTOR_PUSH_CHANNEL,
     NOTIFICATION_URLS,
+    PATIENT_PUSH_CHANNEL,
     type NotificationRow,
 } from '@/lib/shared/notifications/inApp';
 
@@ -269,7 +271,7 @@ async function reconcileOpenSessions(uid: string): Promise<void> {
     const [doctorAccount] = rows.length
         ? await sql`SELECT 1 FROM doctors WHERE uid = ${uid} LIMIT 1`
         : [];
-    const pushChannel = doctorAccount ? 'doctor-updates' : 'patient-updates';
+    const pushChannel = doctorAccount ? DOCTOR_PUSH_CHANNEL : PATIENT_PUSH_CHANNEL;
 
     for (const row of rows) {
         const expired = row.event === 'expired';
@@ -435,7 +437,7 @@ async function notifyCallEvent(
 ): Promise<NotificationRow | null> {
     const recipientUid = session.patient_uid === actorUid ? session.doctor_uid : session.patient_uid;
     if (!recipientUid || recipientUid === actorUid) return null;
-    const pushChannel = recipientUid === context.doctor_uid ? 'doctor-updates' : 'patient-updates';
+    const pushChannel = recipientUid === context.doctor_uid ? DOCTOR_PUSH_CHANNEL : PATIENT_PUSH_CHANNEL;
 
     const actorName = actorUid === context.patient_uid
         ? context.patient_name || 'Patient'

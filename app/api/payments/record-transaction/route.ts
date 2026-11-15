@@ -3,6 +3,7 @@ import { verifyClerkUser } from '@/lib/clerk-verify';
 import sql from '@/lib/db';
 import { computePaymentSplit } from '@/lib/paymentPolicy';
 import { notifyOnce, NOTIFICATION_URLS } from '@/lib/shared/notifications/inApp';
+import { recordConsultationWalletEntries } from '@/lib/wallet';
 
 export async function POST(request: NextRequest) {
   try {
@@ -138,25 +139,41 @@ export async function POST(request: NextRequest) {
 
     const transferStatus = status === 'paid' ? 'manual_pending' : 'pending';
 
-    const [consultationTx] = await sql`
-      INSERT INTO finance_transactions (
-        aid, pid, did, transaction_type, amount, currency, status,
-        razorpay_order_id, razorpay_payment_id, razorpay_signature,
-        payment_method, razorpay_response, description,
-        initiated_at, paid_at,
-        common_payment_id, doctor_net_amount, platform_fee_applied, payout_fee_amount, transfer_status, final_net_amount
-      )
-      VALUES (
-        ${aid}, ${pid}, ${did}, 'consultation', ${pricing.totalPayable}, 'INR', ${status},
-        ${razorpay_order_id}, ${razorpay_payment_id}, ${razorpay_signature},
-        ${payment_method || 'card'}, ${JSON.stringify(razorpay_response || {})},
-        ${'Consultation payment for appointment ' + aid},
-        ${nowIso},
-        ${status === 'paid' ? nowIso : null},
-        ${linkId}, ${doctorNetAmount}, ${pricing.platformFee}, ${0}, ${transferStatus}, ${doctorNetAmount}
-      )
-      RETURNING *
-    `;
+    const consultationTx = await sql.begin(async (tx) => {
+      const query = tx as unknown as typeof sql;
+      const [row] = await query`
+        INSERT INTO finance_transactions (
+          aid, pid, did, transaction_type, amount, currency, status,
+          razorpay_order_id, razorpay_payment_id, razorpay_signature,
+          payment_method, razorpay_response, description,
+          initiated_at, paid_at,
+          common_payment_id, doctor_net_amount, platform_fee_applied, payout_fee_amount, transfer_status, final_net_amount
+        )
+        VALUES (
+          ${aid}, ${pid}, ${did}, 'consultation', ${pricing.totalPayable}, 'INR', ${status},
+          ${razorpay_order_id}, ${razorpay_payment_id}, ${razorpay_signature},
+          ${payment_method || 'card'}, ${JSON.stringify(razorpay_response || {})},
+          ${'Consultation payment for appointment ' + aid},
+          ${nowIso},
+          ${status === 'paid' ? nowIso : null},
+          ${linkId}, ${doctorNetAmount}, ${pricing.platformFee}, ${0}, ${transferStatus}, ${doctorNetAmount}
+        )
+        RETURNING *
+      `;
+
+      if (status === 'paid' && row) {
+        await recordConsultationWalletEntries(tx, {
+          aid,
+          did,
+          pid,
+          transactionId: row.transaction_id,
+          doctorNetAmount,
+          totalPayable: Number(pricing.totalPayable || 0),
+        });
+      }
+
+      return row;
+    });
 
     if (status === 'paid' || status === 'failed') {
       try {

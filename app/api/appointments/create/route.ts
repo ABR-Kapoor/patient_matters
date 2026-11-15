@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { requirePatient } from '@/lib/authz';
-import { notifyMany, NOTIFICATION_URLS, type CreateNotificationInput } from '@/lib/shared/notifications/inApp';
+import { DOCTOR_PUSH_CHANNEL, notifyMany, NOTIFICATION_URLS, type CreateNotificationInput } from '@/lib/shared/notifications/inApp';
 
 function normalizeTime(timeStr: any): string {
     if (!timeStr) return '10:00:00';
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
                     type: 'appointment' as const,
                     actionUrl: NOTIFICATION_URLS.appointments,
                     eventKey: `appointment:${appointment?.aid}:booked`,
-                    pushChannelId: 'doctor-updates',
+                    pushChannelId: DOCTOR_PUSH_CHANNEL,
                     metadata: {
                         image_url: patientProfileImg,
                         avatar_url: patientProfileImg,

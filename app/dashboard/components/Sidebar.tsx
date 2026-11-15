@@ -14,6 +14,7 @@ import {
   PanelLeftClose,
   LogOut,
   Bell,
+  Wallet,
 } from 'lucide-react';
 import { SignOutButton } from '@clerk/nextjs';
 import PatientProfilePicture from '@/app/components/ProfilePicture';
@@ -87,6 +88,7 @@ export default function Sidebar({ user, isExpanded = true, onToggle }: SidebarPr
           <SidebarIconButton icon={Home} href="/dashboard" active={isActive('/dashboard')} title={titleDashboard} />
           <SidebarIconButton icon={Search} href="/dashboard/find-doctors" active={isActive('/dashboard/find-doctors')} title={titleFindDoctors} />
           <SidebarIconButton icon={Calendar} href="/dashboard/appointments" active={isActive('/dashboard/appointments')} title={titleAppointments} />
+          <SidebarIconButton icon={Wallet} href="/dashboard/transactions" active={isActive('/dashboard/transactions')} title="Transactions" />
           <SidebarIconButton icon={Pill} href="/dashboard/prescriptions" active={isActive('/dashboard/prescriptions')} title={titlePrescriptions} />
           <SidebarIconButton icon={Bell} href="/dashboard/notifications" active={isActive('/dashboard/notifications')} title="Notifications" badge={unreadCount} />
           <SidebarIconButton icon={User} href="/dashboard/profile" active={isActive('/dashboard/profile')} title={titleProfile} />
@@ -138,6 +140,12 @@ export default function Sidebar({ user, isExpanded = true, onToggle }: SidebarPr
           href="/dashboard/appointments" 
           icon={Calendar}
           active={isActive('/dashboard/appointments')}
+        />
+        <SidebarNavItem 
+          label="Transactions" 
+          href="/dashboard/transactions" 
+          icon={Wallet}
+          active={isActive('/dashboard/transactions')}
         />
         <SidebarNavItem 
           label="Prescriptions" 
