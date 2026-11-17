@@ -27,7 +27,8 @@ const FONTS = {
   bold: 'DMSans_700Bold',
 };
 
-const serverUrl = process.env.EXPO_PUBLIC_LIVEKIT_URL;
+const serverUrl =
+  process.env.EXPO_PUBLIC_LIVEKIT_URL || 'wss://dev-42vzlprn.livekit.cloud';
 
 function formatDuration(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
