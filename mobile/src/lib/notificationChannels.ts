@@ -20,6 +20,28 @@ export async function ensurePushChannel(notifications: NotificationsModule): Pro
     enableLights: true,
   });
 
+  await notifications.setNotificationChannelAsync('appointments', {
+    name: 'Appointments',
+    description: 'Booking confirmations, reminders, and updates',
+    importance: notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#048256',
+    enableVibrate: true,
+    showBadge: true,
+    enableLights: true,
+  });
+
+  await notifications.setNotificationChannelAsync('calls', {
+    name: 'Consultation Calls',
+    description: 'Incoming video consultations and call notifications',
+    importance: notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 500, 250, 500],
+    lightColor: '#048256',
+    enableVibrate: true,
+    showBadge: true,
+    enableLights: true,
+  });
+
   for (const legacyChannelId of LEGACY_PUSH_CHANNEL_IDS) {
     await notifications.deleteNotificationChannelAsync(legacyChannelId).catch(() => {});
   }

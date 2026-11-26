@@ -85,9 +85,9 @@ function RootLayoutNav() {
   // Tapping a dose reminder or lifecycle push opens the matching mobile route.
   useEffect(() => {
     if (!isLoaded) return;
-    return subscribeToDoseNotificationTaps((url) => {
-      const href = toMobileNotificationHref(url);
-      if (href) router.push(href);
+    return subscribeToDoseNotificationTaps((url, data) => {
+      const href = toMobileNotificationHref(url, data);
+      if (href) router.push(href as any);
     });
   }, [isLoaded, router]);
 

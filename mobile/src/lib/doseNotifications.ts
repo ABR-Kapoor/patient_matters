@@ -222,14 +222,15 @@ export async function cancelDoseNotification(adherenceId: string): Promise<void>
 // Tapping a reminder opens the Medications tab where the dose can be logged.
 // Handles both a tap while running and a tap that cold-starts the app.
 export function subscribeToDoseNotificationTaps(
-  navigate: (url: string) => void
+  navigate: (url: string, data?: Record<string, any>) => void
 ): () => void {
   const n = Notifications;
   if (!n) return () => {};
 
   const redirect = (response: import('expo-notifications').NotificationResponse | null | undefined) => {
-    const url = response?.notification?.request?.content?.data?.url;
-    if (typeof url === 'string' && url.length > 0) navigate(url);
+    const data = response?.notification?.request?.content?.data as Record<string, any> | undefined;
+    const url = typeof data?.url === 'string' ? data.url : '';
+    navigate(url, data);
   };
 
   void n.getLastNotificationResponseAsync().then((response) => {
