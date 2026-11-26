@@ -12,8 +12,9 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        const { adherenceId } = body;
+        const { adherenceId, durationMinutes } = body;
         const adherence_id = adherenceId || body.adherence_id;
+        const mins = Math.max(1, Math.min(1440, Number(durationMinutes) || 15));
 
         if (!adherence_id) {
             return NextResponse.json({ success: false, error: 'adherenceId is required' }, { status: 400 });
@@ -36,13 +37,18 @@ export async function POST(request: Request) {
             );
         }
 
+        const intervalStr = `${mins} minutes`;
+
         const [data] = await sql`
             UPDATE medication_adherence
             SET snooze_count = COALESCE(snooze_count, 0) + 1,
-                reminder_snoozed_until = CURRENT_TIMESTAMP + INTERVAL '1 hour',
+                reminder_snoozed_until = CURRENT_TIMESTAMP + ${intervalStr}::interval,
+                snooze_until = CURRENT_TIMESTAMP + ${intervalStr}::interval,
+                status = 'pending',
                 updated_at = CURRENT_TIMESTAMP
             WHERE adherence_id = ${adherence_id} AND pid = ${pid}
-            RETURNING *
+            RETURNING adherence_id, pid, medicine_name, scheduled_date::text as scheduled_date, scheduled_time,
+                      is_taken, is_skipped, reminder_snoozed_until, snooze_until, snooze_count, status, updated_at
         `;
 
         try {
@@ -55,7 +61,8 @@ export async function POST(request: Request) {
             success: true,
             adherence: data,
             snoozed_until: data.reminder_snoozed_until,
-            message: 'Reminder snoozed successfully'
+            durationMinutes: mins,
+            message: `Reminder snoozed for ${mins} minutes`
         });
     } catch (error: any) {
         console.error('[API] Snooze error:', error);

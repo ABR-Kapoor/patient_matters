@@ -17,7 +17,12 @@ export async function GET(request: NextRequest) {
 
         if (prescription_id) {
             finalData = await sql`
-                SELECT ma.*, 
+                SELECT ma.adherence_id, ma.prescription_id, ma.pid, ma.medicine_name,
+                  ma.scheduled_date::text as scheduled_date,
+                  ma.scheduled_time,
+                  ma.is_taken, ma.is_skipped, ma.skip_reason,
+                  ma.taken_at, ma.skipped_at,
+                  ma.reminder_snoozed_until, ma.snooze_until, ma.snooze_count,
                   CASE WHEN ma.is_taken THEN 'taken' WHEN ma.is_skipped THEN 'skipped' ELSE 'pending' END as status,
                   p.did, p.medicines as prescription_medicines, u.name as doctor_name
                 FROM medication_adherence ma
@@ -25,11 +30,16 @@ export async function GET(request: NextRequest) {
                 LEFT JOIN doctors d ON p.did = d.did
                 LEFT JOIN users u ON d.uid = u.uid
                 WHERE ma.pid = ${pid} AND ma.prescription_id = ${prescription_id}
-                ORDER BY ma.scheduled_date ASC
+                ORDER BY ma.scheduled_date ASC, ma.scheduled_time ASC
             `;
         } else {
             finalData = await sql`
-                SELECT ma.*, 
+                SELECT ma.adherence_id, ma.prescription_id, ma.pid, ma.medicine_name,
+                  ma.scheduled_date::text as scheduled_date,
+                  ma.scheduled_time,
+                  ma.is_taken, ma.is_skipped, ma.skip_reason,
+                  ma.taken_at, ma.skipped_at,
+                  ma.reminder_snoozed_until, ma.snooze_until, ma.snooze_count,
                   CASE WHEN ma.is_taken THEN 'taken' WHEN ma.is_skipped THEN 'skipped' ELSE 'pending' END as status,
                   p.did, p.medicines as prescription_medicines, u.name as doctor_name
                 FROM medication_adherence ma
@@ -37,7 +47,7 @@ export async function GET(request: NextRequest) {
                 LEFT JOIN doctors d ON p.did = d.did
                 LEFT JOIN users u ON d.uid = u.uid
                 WHERE ma.pid = ${pid}
-                ORDER BY ma.scheduled_date ASC
+                ORDER BY ma.scheduled_date ASC, ma.scheduled_time ASC
             `;
         }
 
@@ -66,7 +76,7 @@ export async function GET(request: NextRequest) {
             };
         });
 
-        // Frequency → time slots (mirrors DB trigger + doctor_view send route)
+        // Frequency -> time slots (mirrors DB trigger + doctor_view send route)
         const parseFrequencyTimes = (frequency: string): string[] => {
             const f = (frequency || '').toLowerCase().trim();
             if (f.includes('twice') || f.includes('2 times') || f.includes('two times') ||
@@ -101,16 +111,11 @@ export async function GET(request: NextRequest) {
                 WHERE pid = ${pid} AND sent_to_patient = true
             `;
 
-            // Build per-medicine key set: "prescription_id::medicine_name"
-            // DB returns snake_case: prescription_id, medicine_name
             const existingKeys = new Set(
                 finalData.map((r: any) => `${r.prescription_id}::${r.medicine_name}`)
             );
 
             const now2 = new Date();
-            // Collect every missing dose and insert them in ONE statement. The
-            // old per-row awaited INSERTs serialized hundreds of round-trips for
-            // a freshly-sent prescription and could blow the client's 15s timeout.
             const healingRows: Array<{
                 pid: string;
                 prescription_id: string;
@@ -121,7 +126,6 @@ export async function GET(request: NextRequest) {
 
             for (const p of prescriptions) {
                 if (!p.medicines) continue;
-                // DB returns snake_case: p.prescription_id
                 const rxId = p.prescription_id;
                 if (!rxId) continue;
                 
@@ -133,9 +137,8 @@ export async function GET(request: NextRequest) {
                 for (const med of list) {
                     if (!med.name) continue;
                     const key = `${rxId}::${med.name}`;
-                    if (existingKeys.has(key)) continue; // already has records
+                    if (existingKeys.has(key)) continue;
 
-                    console.log(`[API] Self-healing: generating records for ${med.name} in rx ${rxId}`);
                     const times = parseFrequencyTimes(med.frequency || '');
                     const days = parseDurationDays(med.duration || '');
 
@@ -164,13 +167,14 @@ export async function GET(request: NextRequest) {
                     VALUES ${sql(healingRows, 'pid', 'prescription_id', 'medicine_name', 'scheduled_date', 'scheduled_time')}
                     ON CONFLICT (prescription_id, medicine_name, scheduled_date, scheduled_time) DO NOTHING
                 `;
-            }
 
-            if (healingDone) {
-
-                // Reload all records after generation
                 finalData = await sql`
-                    SELECT ma.*, 
+                    SELECT ma.adherence_id, ma.prescription_id, ma.pid, ma.medicine_name,
+                      ma.scheduled_date::text as scheduled_date,
+                      ma.scheduled_time,
+                      ma.is_taken, ma.is_skipped, ma.skip_reason,
+                      ma.taken_at, ma.skipped_at,
+                      ma.reminder_snoozed_until, ma.snooze_until, ma.snooze_count,
                       CASE WHEN ma.is_taken THEN 'taken' WHEN ma.is_skipped THEN 'skipped' ELSE 'pending' END as status,
                       p.did, p.medicines as prescription_medicines, u.name as doctor_name
                     FROM medication_adherence ma
@@ -178,9 +182,9 @@ export async function GET(request: NextRequest) {
                     LEFT JOIN doctors d ON p.did = d.did
                     LEFT JOIN users u ON d.uid = u.uid
                     WHERE ma.pid = ${pid}
-                    ORDER BY ma.scheduled_date ASC
+                    ORDER BY ma.scheduled_date ASC, ma.scheduled_time ASC
                 `;
-                // Re-transform after reload
+
                 finalData = finalData.map((record: any) => {
                     const meds = Array.isArray(record.prescription_medicines) ? record.prescription_medicines : [];
                     const medInfo = meds.find((m: any) => m.name === record.medicine_name);
@@ -195,34 +199,65 @@ export async function GET(request: NextRequest) {
         }
 
         const now = new Date();
-        // Use local wall-clock date (not UTC) to avoid timezone-shifted date mismatches
-        const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:00`;
+        const clientDate = request.nextUrl.searchParams.get('client_date');
+        const clientTime = request.nextUrl.searchParams.get('client_time');
+
+        // Use client local wall-clock date if provided, otherwise derive from current time
+        const todayKey = clientDate || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const currentTime = clientTime || `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:00`;
 
         const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
         const oneHourFromNowTime = `${oneHourFromNow.getHours().toString().padStart(2, '0')}:${oneHourFromNow.getMinutes().toString().padStart(2, '0')}:00`;
 
-        // Normalize scheduledDate: postgres DATE columns can arrive as 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:mm:ssZ'
         const getDateStr = (val: any): string => {
-            if (val instanceof Date) return val.toISOString().split('T')[0];
+            if (!val) return '';
+            if (val instanceof Date) {
+                return `${val.getFullYear()}-${String(val.getMonth() + 1).padStart(2, '0')}-${String(val.getDate()).padStart(2, '0')}`;
+            }
             return String(val).split('T')[0];
         };
 
-        const pending = finalData.filter((d: any) => {
-            if (getDateStr(d.scheduled_date) !== todayKey || d.status !== 'pending') return false;
-            return d.scheduled_time <= oneHourFromNowTime;
-        });
-
-        const dueNow = finalData.filter((d: any) => {
-            if (getDateStr(d.scheduled_date) !== todayKey || d.status !== 'pending') return false;
-            const medicineTime = d.scheduled_time;
-            return medicineTime <= oneHourFromNowTime && medicineTime >= currentTime;
-        });
-
         const isPending = (d: any) => !d.is_taken && !d.is_skipped;
 
-        const overdue = finalData.filter((d: any) => {
+        // A dose is actively snoozed if a snooze timestamp exists and is in the future
+        const isSnoozed = (d: any): boolean => {
             if (!isPending(d)) return false;
+            const snoozedUntil = d.reminder_snoozed_until || d.snooze_until;
+            if (!snoozedUntil) return false;
+            const snoozeMs = new Date(snoozedUntil).getTime();
+            return !isNaN(snoozeMs) && snoozeMs > now.getTime();
+        };
+
+        // Annotate each record with snooze flag
+        finalData = finalData.map((d: any) => {
+            const snoozed = isSnoozed(d);
+            const snoozedUntil = d.reminder_snoozed_until || d.snooze_until;
+            return {
+                ...d,
+                is_snoozed: snoozed,
+                snoozed_until: snoozed ? snoozedUntil : null
+            };
+        });
+
+        // Actively snoozed doses
+        const snoozed = finalData.filter((d: any) => d.is_snoozed);
+
+        // Pending: today's doses up to 1 hr from now, NOT completed and NOT actively snoozed
+        const pending = finalData.filter((d: any) => {
+            if (!isPending(d) || d.is_snoozed) return false;
+            return getDateStr(d.scheduled_date) === todayKey && d.scheduled_time <= oneHourFromNowTime;
+        });
+
+        // Due now: doses due in the current window (now to now + 1 hour)
+        const dueNow = finalData.filter((d: any) => {
+            if (!isPending(d) || d.is_snoozed) return false;
+            if (getDateStr(d.scheduled_date) !== todayKey) return false;
+            return d.scheduled_time <= oneHourFromNowTime && d.scheduled_time >= currentTime;
+        });
+
+        // Overdue: scheduled date/time has passed, NOT completed, NOT actively snoozed
+        const overdue = finalData.filter((d: any) => {
+            if (!isPending(d) || d.is_snoozed) return false;
             const ds = getDateStr(d.scheduled_date);
             if (ds < todayKey) return true;
             if (ds === todayKey && d.scheduled_time < currentTime) return true;
@@ -231,8 +266,22 @@ export async function GET(request: NextRequest) {
 
         const taken = finalData.filter((d: any) => d.is_taken);
         const skipped = finalData.filter((d: any) => d.is_skipped);
+
+        // Doses completed today (taken or skipped today)
+        const completedToday = finalData.filter((d: any) => {
+            if (d.is_taken) {
+                const dateTaken = d.taken_at ? getDateStr(d.taken_at) : getDateStr(d.scheduled_date);
+                return dateTaken === todayKey;
+            }
+            if (d.is_skipped) {
+                const dateSkipped = d.skipped_at ? getDateStr(d.skipped_at) : getDateStr(d.scheduled_date);
+                return dateSkipped === todayKey;
+            }
+            return false;
+        });
+
         const upcoming = finalData.filter((d: any) => {
-            if (!isPending(d)) return false;
+            if (!isPending(d) || d.is_snoozed) return false;
             const ds = getDateStr(d.scheduled_date);
             if (ds > todayKey) return true;
             if (ds === todayKey && d.scheduled_time > oneHourFromNowTime) return true;
@@ -245,6 +294,11 @@ export async function GET(request: NextRequest) {
             (getDateStr(d.scheduled_date) === todayKey && d.scheduled_time <= currentTime)
         );
 
+        const todayDoses = finalData.filter((d: any) => getDateStr(d.scheduled_date) === todayKey);
+        const todayTaken = completedToday.filter((d: any) => d.is_taken).length;
+        const todaySkipped = completedToday.filter((d: any) => d.is_skipped).length;
+        const todayScheduled = Math.max(todayDoses.length, todayTaken + todaySkipped);
+
         return NextResponse.json({
             success: true,
             adherence: {
@@ -252,8 +306,10 @@ export async function GET(request: NextRequest) {
                 pending,
                 dueNow,
                 overdue,
+                snoozed,
                 taken,
                 skipped,
+                completedToday,
                 upcoming,
                 stats: {
                     total: finalData.length,
@@ -262,9 +318,15 @@ export async function GET(request: NextRequest) {
                     skipped: skipped.length,
                     pending: pending.length,
                     overdue: overdue.length,
+                    snoozed: snoozed.length,
+                    todayScheduled,
+                    todayTaken,
+                    todaySkipped,
+                    todayRemaining: Math.max(0, todayScheduled - todayTaken - todaySkipped),
                     adherenceRate: elapsed.length ? ((taken.length / elapsed.length) * 100).toFixed(1) : "0.0"
                 },
-                currentTime: currentTime
+                currentTime: currentTime,
+                todayDate: todayKey
             }
         });
     } catch (error: any) {
@@ -276,7 +338,7 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// PATCH - Update adherence record (mark taken/skipped)
+// PATCH - Update adherence record (mark taken/skipped/pending)
 export async function PATCH(request: NextRequest) {
     const auth = await requirePatient();
     if (!auth.ok) return auth.response;
@@ -302,9 +364,7 @@ export async function PATCH(request: NextRequest) {
             );
         }
 
-        // Ownership check: an adherence_id is addressable by anyone who knows
-        // it, so confirm the record belongs to the signed-in patient before
-        // any write.
+        // Ownership check
         const [owned] = await sql`
             SELECT adherence_id FROM medication_adherence
             WHERE adherence_id = ${adherence_id} AND pid = ${pid}
@@ -325,32 +385,45 @@ export async function PATCH(request: NextRequest) {
                 UPDATE medication_adherence
                 SET is_taken = true, 
                     is_skipped = false,
+                    status = 'taken',
                     taken_at = CURRENT_TIMESTAMP, 
+                    reminder_snoozed_until = NULL,
+                    snooze_until = NULL,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE adherence_id = ${adherence_id}
-                RETURNING *
+                RETURNING adherence_id, pid, medicine_name, scheduled_date::text as scheduled_date, scheduled_time,
+                          is_taken, is_skipped, status, taken_at, skipped_at, reminder_snoozed_until, updated_at
             `;
         } else if (status === 'skipped') {
             [data] = await sql`
                 UPDATE medication_adherence
                 SET is_taken = false, 
                     is_skipped = true,
+                    status = 'skipped',
                     skip_reason = ${notes || null}, 
                     skipped_at = CURRENT_TIMESTAMP, 
+                    reminder_snoozed_until = NULL,
+                    snooze_until = NULL,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE adherence_id = ${adherence_id}
-                RETURNING *
+                RETURNING adherence_id, pid, medicine_name, scheduled_date::text as scheduled_date, scheduled_time,
+                          is_taken, is_skipped, status, taken_at, skipped_at, skip_reason, reminder_snoozed_until, updated_at
             `;
         } else if (status === 'pending') {
             [data] = await sql`
                 UPDATE medication_adherence
                 SET is_taken = false, 
                     is_skipped = false,
+                    status = 'pending',
                     taken_at = NULL, 
                     skipped_at = NULL, 
+                    skip_reason = NULL,
+                    reminder_snoozed_until = NULL,
+                    snooze_until = NULL,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE adherence_id = ${adherence_id}
-                RETURNING *
+                RETURNING adherence_id, pid, medicine_name, scheduled_date::text as scheduled_date, scheduled_time,
+                          is_taken, is_skipped, status, taken_at, skipped_at, reminder_snoozed_until, updated_at
             `;
         }
 
@@ -362,12 +435,12 @@ export async function PATCH(request: NextRequest) {
             console.error('[API] Failed to refresh materialized view:', err);
         }
 
-        console.log('[API] Adherence updated:', adherence_id);
+        console.log(`[API] Adherence ${adherence_id} marked as ${status}`);
 
         return NextResponse.json({
             success: true,
             adherence: data,
-            message: 'Adherence updated successfully'
+            message: `Adherence updated to ${status} successfully`
         });
     } catch (error: any) {
         console.error('[API] Adherence update error:', error);
