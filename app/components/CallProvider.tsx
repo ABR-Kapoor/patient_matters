@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Loader2, Phone, PhoneOff, Video } from 'lucide-react';
+import { Loader2, Phone, PhoneOff, Video, Volume2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthToken } from '@/lib/auth-token-context';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
@@ -296,7 +296,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
     if (!session || session.status !== 'ringing' || countdown <= 0) {
       stopRingtone();
-    } else if (session.direction === 'incoming') {
+    } else if (session.status === 'ringing') {
       playRingtone();
     } else {
       stopRingtone();
@@ -339,13 +339,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
       {showIncoming && session && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
-            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-emerald-100 text-2xl font-bold text-emerald-700">
-              {session.peer.imageUrl ? (
-                <img src={session.peer.imageUrl} alt={session.peer.name} className="h-full w-full object-cover" />
-              ) : peerInitial}
+            <div className="relative mx-auto mb-4 flex h-20 w-20 items-center justify-center">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-30 duration-1000" />
+              <div className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-emerald-100 text-2xl font-bold text-emerald-700 shadow-sm">
+                {session.peer.imageUrl ? (
+                  <img src={session.peer.imageUrl} alt={session.peer.name} className="h-full w-full object-cover" />
+                ) : peerInitial}
+              </div>
             </div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Incoming video call</p>
             <h2 className="mt-1 text-2xl font-bold text-gray-900">{session.peer.name}</h2>
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+              <Volume2 className="h-3.5 w-3.5 animate-pulse text-emerald-600" />
+              <span>Ringing • Incoming Call</span>
+            </div>
             <p className="mt-1 text-sm text-gray-500">Ringing for {countdown}s</p>
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button
@@ -372,13 +379,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
       {showOutgoing && session && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
-            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-emerald-100 text-2xl font-bold text-emerald-700">
-              {session.peer.imageUrl ? (
-                <img src={session.peer.imageUrl} alt={session.peer.name} className="h-full w-full object-cover" />
-              ) : peerInitial}
+            <div className="relative mx-auto mb-4 flex h-20 w-20 items-center justify-center">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-30 duration-1000" />
+              <div className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-emerald-100 text-2xl font-bold text-emerald-700 shadow-sm">
+                {session.peer.imageUrl ? (
+                  <img src={session.peer.imageUrl} alt={session.peer.name} className="h-full w-full object-cover" />
+                ) : peerInitial}
+              </div>
             </div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Calling</p>
             <h2 className="mt-1 text-2xl font-bold text-gray-900">{session.peer.name}</h2>
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+              <Volume2 className="h-3.5 w-3.5 animate-pulse text-emerald-600" />
+              <span>Ringing • Calling doctor...</span>
+            </div>
             <p className="mt-1 text-sm text-gray-500">Waiting for them to answer... {countdown}s</p>
             <button
               type="button"

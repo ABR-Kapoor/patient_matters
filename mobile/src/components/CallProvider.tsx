@@ -8,10 +8,10 @@ import React, {
   useState,
   type ReactNode,
 } from 'react';
-import { ActivityIndicator, AppState, Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, AppState, Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/expo';
-import { Loader2, Phone, PhoneOff, Video } from 'lucide-react-native';
+import { Loader2, Phone, PhoneOff, Video, Volume2 } from 'lucide-react-native';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { callSoundService } from '../lib/callSoundService';
 import { useNotification } from '../lib/NotificationContext';
@@ -247,6 +247,31 @@ export function CallProvider({ children }: { children: ReactNode }) {
     ? Math.max(0, Math.ceil((new Date(displaySession.ringExpiresAt).getTime() - (now + serverOffset)) / 1000))
     : 60;
 
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (displaySession?.status === 'ringing') {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.25,
+            duration: 850,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 850,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [displaySession?.status, pulseAnim]);
+
   useEffect(() => {
     if (!recentTerminal || shownTerminalRef.current.has(recentTerminal.id)) return;
     if (displaySession?.id === recentTerminal.id && displaySession.status !== 'active') return;
@@ -260,7 +285,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const current = session ? { id: session.id, status: session.status } : null;
     previousRef.current = current;
 
-    if (session?.status === 'ringing' && session.direction === 'incoming' && countdown > 0) {
+    if (session?.status === 'ringing' && countdown > 0) {
       void callSoundService.startWaitingRing();
     } else {
       void callSoundService.stopWaitingRing();
@@ -305,17 +330,37 @@ export function CallProvider({ children }: { children: ReactNode }) {
       <Modal visible={Boolean(showIncoming || showOutgoing)} transparent animationType="fade" statusBarTranslucent>
         <View style={styles.overlay}>
           <View style={styles.card}>
-            <View style={styles.avatar}>
-              {displaySession?.peer.imageUrl ? (
-                <Image source={{ uri: displaySession.peer.imageUrl }} style={styles.avatarImage} />
-              ) : (
-                <Text style={styles.avatarText}>{initial}</Text>
-              )}
+            <View style={styles.avatarContainer}>
+              <Animated.View
+                style={[
+                  styles.pulseCircle,
+                  {
+                    transform: [{ scale: pulseAnim }],
+                    opacity: pulseAnim.interpolate({
+                      inputRange: [1, 1.25],
+                      outputRange: [0.65, 0.15],
+                    }),
+                  },
+                ]}
+              />
+              <View style={styles.avatar}>
+                {displaySession?.peer.imageUrl ? (
+                  <Image source={{ uri: displaySession.peer.imageUrl }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarText}>{initial}</Text>
+                )}
+              </View>
             </View>
             <Text style={styles.eyebrow}>
               {showIncoming ? 'INCOMING VIDEO CALL' : 'CALLING'}
             </Text>
             <Text style={styles.name}>{displaySession?.peer.name || 'Consultation'}</Text>
+            <View style={styles.ringingSoundBadge}>
+              <Volume2 size={15} color={COLORS.primary} />
+              <Text style={styles.ringingSoundText}>
+                {showIncoming ? 'Ringing • Incoming Video Call' : 'Ringing • Calling doctor...'}
+              </Text>
+            </View>
             <Text style={styles.hint}>
               {showIncoming ? `Ringing for ${countdown}s` : `Waiting for answer... ${countdown}s`}
             </Text>
@@ -404,6 +449,20 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
   },
+  avatarContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    width: 104,
+    height: 104,
+  },
+  pulseCircle: {
+    position: 'absolute',
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    backgroundColor: COLORS.primaryLight,
+  },
   avatar: {
     width: 84,
     height: 84,
@@ -412,7 +471,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    marginBottom: 16,
+  },
+  ringingSoundBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  ringingSoundText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   avatarImage: { width: '100%', height: '100%' },
   avatarText: { color: COLORS.primary, fontSize: 30, fontWeight: '700' },
