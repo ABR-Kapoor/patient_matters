@@ -1,7 +1,31 @@
 import type { Href } from 'expo-router';
 
-export function toMobileNotificationHref(url?: string | null): Href | null {
-  if (!url) return null;
+/**
+ * Maps notification payloads (URLs or data types) to their matching patient mobile screens.
+ */
+export function toMobileNotificationHref(
+  url?: string | null,
+  data?: Record<string, any> | null,
+): Href | null {
+  if (data?.type === 'video_call' && data?.aid) {
+    return `/video-call/${data.aid}` as Href;
+  }
+
+  if (data?.type === 'prescription') {
+    return '/(dashboard)/prescriptions' as Href;
+  }
+
+  if (data?.type === 'medication' || data?.type === 'dose') {
+    return '/(dashboard)/medications' as Href;
+  }
+
+  if (data?.type === 'appointment') {
+    return '/(dashboard)/appointments' as Href;
+  }
+
+  if (!url) {
+    return '/(dashboard)/notifications' as Href;
+  }
 
   const trimmed = url.trim();
   if (!trimmed) return null;

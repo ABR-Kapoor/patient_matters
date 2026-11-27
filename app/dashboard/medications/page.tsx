@@ -40,13 +40,20 @@ export default function MedicationsPage() {
   const markAdherence = useMarkAdherence();
   const queryClient = useQueryClient();
 
-  // Derive pending (today's un-taken meds) from query data
-  const pending = (adherenceData?.pending || []).filter((r) => {
-    const d = new Date();
-    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const dateStr = String(r.scheduled_date).split('T')[0];
-    return dateStr === todayStr;
-  }).map((r) => ({
+  // Derive active un-taken meds from query data (overdue, due now, pending)
+  const seenIds = new Set<string>();
+  const activeDoses = [
+    ...(adherenceData?.overdue || []),
+    ...(adherenceData?.dueNow || []),
+    ...(adherenceData?.pending || []),
+  ].filter((r: any) => {
+    if (!r || r.status === 'taken' || r.status === 'skipped' || r.is_snoozed) return false;
+    if (seenIds.has(r.adherence_id)) return false;
+    seenIds.add(r.adherence_id);
+    return true;
+  });
+
+  const pending = activeDoses.map((r: any) => ({
     adherenceId: r.adherence_id,
     medicineName: r.medicine_name,
     scheduledDate: r.scheduled_date,
@@ -104,11 +111,11 @@ export default function MedicationsPage() {
       const res = await fetch('/api/patient/adherence/snooze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ adherenceId: adherence_id })
+        body: JSON.stringify({ adherenceId: adherence_id, durationMinutes: 15 })
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(await translate('Snoozed for 10 minutes'));
+        toast.success(await translate('Snoozed for 15 minutes'));
         queryClient.invalidateQueries({ queryKey: ['patient', 'adherence', pid] });
         queryClient.invalidateQueries({ queryKey: ['patient', 'dashboard', uid] });
         if (typeof window !== 'undefined') window.dispatchEvent(new Event('adherenceUpdated'));

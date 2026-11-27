@@ -55,7 +55,7 @@ export function useAdherence(pid: string | null, token: string | null) {
         skipped:  data.adherence?.skipped  || [],
       } as AdherenceSchedule;
     },
-    staleTime: Infinity,
+    staleTime: 10000,
     enabled: !!pid && !!token,
   });
 }

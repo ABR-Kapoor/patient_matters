@@ -1,7 +1,10 @@
 {
-  "name": "aurasutra-patient",
+  "name": "aurasutra-patient-web",
   "version": "1.0.0",
   "private": true,
+  "workspaces": [
+    "mobile"
+  ],
   "scripts": {
     "dev": "next dev",
     "dev:turbo": "next dev --turbo",

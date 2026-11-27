@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, PermissionsAndroid, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { PhoneOff, X } from 'lucide-react-native';
+import { PhoneOff, Volume2, X } from 'lucide-react-native';
 import { useAuthToken, usePatientIdentity } from '../../../hooks/stubs';
 import { fetchWithAuth } from '../../../lib/fetchWithAuth';
 import { callSoundService } from '../../../lib/callSoundService';
@@ -27,7 +27,8 @@ const FONTS = {
   bold: 'DMSans_700Bold',
 };
 
-const serverUrl = process.env.EXPO_PUBLIC_LIVEKIT_URL;
+const serverUrl =
+  process.env.EXPO_PUBLIC_LIVEKIT_URL || 'wss://dev-42vzlprn.livekit.cloud';
 
 function formatDuration(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
@@ -70,6 +71,14 @@ export default function VideoCallPage() {
     if (!aid) return null;
     return ('appointment_' + String(aid)).trim().slice(0, 64);
   }, [aid]);
+
+  useEffect(() => {
+    if (waiting && !joined && !fatalError) {
+      void callSoundService.startWaitingRing();
+    } else if (!waiting || joined) {
+      void callSoundService.stopWaitingRing();
+    }
+  }, [fatalError, joined, waiting]);
 
   useEffect(() => {
     let cancelled = false;
@@ -273,6 +282,10 @@ export default function VideoCallPage() {
       ) : waiting ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
+          <View style={styles.waitingBadge}>
+            <Volume2 size={16} color={COLORS.primary} />
+            <Text style={styles.waitingBadgeText}>Ringing doctor's phone...</Text>
+          </View>
           <Text style={styles.loadingText}>Waiting for the doctor to answer...</Text>
         </View>
       ) : !serverUrl ? (
@@ -341,7 +354,23 @@ const styles = StyleSheet.create({
     zIndex: 10,
     padding: 24,
   },
-  loadingText: { color: COLORS.gray, marginTop: 16, fontSize: 14, fontFamily: FONTS.medium },
+  loadingText: { color: COLORS.gray, marginTop: 12, fontSize: 14, fontFamily: FONTS.medium },
+  waitingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginTop: 16,
+  },
+  waitingBadgeText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontFamily: FONTS.medium,
+    fontWeight: '600',
+  },
   errorContainer: {
     position: 'absolute',
     top: 0,

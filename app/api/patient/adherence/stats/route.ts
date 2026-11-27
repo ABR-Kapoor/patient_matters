@@ -12,19 +12,27 @@ export async function GET(request: NextRequest) {
 
         const pid = auth.data.pid;
         const prescription_id = request.nextUrl.searchParams.get('prescription_id');
+        const clientDate = request.nextUrl.searchParams.get('client_date');
+        const clientTime = request.nextUrl.searchParams.get('client_time');
 
         const adherenceRecords = prescription_id
             ? await sql`
-                SELECT *, CASE WHEN is_taken THEN 'taken' WHEN is_skipped THEN 'skipped' ELSE 'pending' END as status
+                SELECT adherence_id, prescription_id, pid, medicine_name,
+                       scheduled_date::text as scheduled_date, scheduled_time,
+                       is_taken, is_skipped, taken_at, skipped_at, reminder_snoozed_until, snooze_until,
+                       CASE WHEN is_taken THEN 'taken' WHEN is_skipped THEN 'skipped' ELSE 'pending' END as status
                 FROM medication_adherence
                 WHERE pid = ${pid} AND prescription_id = ${prescription_id}
-                ORDER BY scheduled_date ASC
+                ORDER BY scheduled_date ASC, scheduled_time ASC
             `
             : await sql`
-                SELECT *, CASE WHEN is_taken THEN 'taken' WHEN is_skipped THEN 'skipped' ELSE 'pending' END as status
+                SELECT adherence_id, prescription_id, pid, medicine_name,
+                       scheduled_date::text as scheduled_date, scheduled_time,
+                       is_taken, is_skipped, taken_at, skipped_at, reminder_snoozed_until, snooze_until,
+                       CASE WHEN is_taken THEN 'taken' WHEN is_skipped THEN 'skipped' ELSE 'pending' END as status
                 FROM medication_adherence
                 WHERE pid = ${pid}
-                ORDER BY scheduled_date ASC
+                ORDER BY scheduled_date ASC, scheduled_time ASC
             `;
 
         if (!adherenceRecords || adherenceRecords.length === 0) {
@@ -35,8 +43,16 @@ export async function GET(request: NextRequest) {
         }
 
         const now = new Date();
-        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const timeStr = now.toTimeString().split(' ')[0];
+        const todayStr = clientDate || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const timeStr = clientTime || `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:00`;
+
+        const getDateStr = (val: any): string => {
+            if (!val) return '';
+            if (val instanceof Date) {
+                return `${val.getFullYear()}-${String(val.getMonth() + 1).padStart(2, '0')}-${String(val.getDate()).padStart(2, '0')}`;
+            }
+            return String(val).split('T')[0];
+        };
 
         const isPending = (r: any) => !r.is_taken && !r.is_skipped;
         
@@ -46,25 +62,31 @@ export async function GET(request: NextRequest) {
         
         const totalNotTaken = adherenceRecords.filter(r => {
             if (!isPending(r)) return false;
-            let dateStr = r.scheduled_date;
-            if (typeof r.scheduled_date === 'object') dateStr = r.scheduled_date.toISOString().split('T')[0];
-            else if (typeof r.scheduled_date === 'string') dateStr = r.scheduled_date.split('T')[0];
+            const dateStr = getDateStr(r.scheduled_date);
             return dateStr < todayStr || (dateStr === todayStr && r.scheduled_time <= timeStr);
         }).length;
 
         const overallPercentage = totalDoses > 0 ? Math.round((totalTaken / totalDoses) * 100) : 0;
 
-        const todayRecords = adherenceRecords.filter(r => {
-            let dateStr = r.scheduled_date;
-            if (typeof r.scheduled_date === 'object') dateStr = r.scheduled_date.toISOString().split('T')[0];
-            else if (typeof r.scheduled_date === 'string') dateStr = r.scheduled_date.split('T')[0];
-            return dateStr === todayStr;
-        });
-        
-        const todayScheduled = todayRecords.length;
-        const todayTaken = todayRecords.filter(r => r.is_taken).length;
-        const todaySkipped = todayRecords.filter(r => r.is_skipped).length;
-        const todayNotTaken = todayRecords.filter(r => isPending(r) && r.scheduled_time <= timeStr).length;
+        // Doses scheduled for today
+        const todayScheduledDoses = adherenceRecords.filter(r => getDateStr(r.scheduled_date) === todayStr);
+
+        // Doses taken today: either scheduled for today, or acted upon today
+        const todayTaken = adherenceRecords.filter(r => {
+            if (!r.is_taken) return false;
+            const actionDate = r.taken_at ? getDateStr(r.taken_at) : getDateStr(r.scheduled_date);
+            return actionDate === todayStr;
+        }).length;
+
+        // Doses skipped today: either scheduled for today, or acted upon today
+        const todaySkipped = adherenceRecords.filter(r => {
+            if (!r.is_skipped) return false;
+            const actionDate = r.skipped_at ? getDateStr(r.skipped_at) : getDateStr(r.scheduled_date);
+            return actionDate === todayStr;
+        }).length;
+
+        const todayNotTaken = todayScheduledDoses.filter(r => isPending(r) && r.scheduled_time <= timeStr).length;
+        const todayScheduled = Math.max(todayScheduledDoses.length, todayTaken + todaySkipped);
         const dailyPercentage = todayScheduled > 0 ? Math.round((todayTaken / todayScheduled) * 100) : 0;
 
         const medicineMap = new Map();
@@ -78,15 +100,13 @@ export async function GET(request: NextRequest) {
             if (record.is_taken) med.taken++;
             else if (record.is_skipped) med.skipped++;
             
-            let dateStr = record.scheduled_date;
-            if (typeof record.scheduled_date === 'object') dateStr = record.scheduled_date.toISOString().split('T')[0];
-            else if (typeof record.scheduled_date === 'string') dateStr = record.scheduled_date.split('T')[0];
+            const dateStr = getDateStr(record.scheduled_date);
 
             if (isPending(record) && (dateStr < todayStr || (dateStr === todayStr && record.scheduled_time <= timeStr))) {
                 med.notTaken++;
             }
             
-            const date = record.scheduled_date;
+            const date = dateStr;
             if (!dailyMap.has(date)) dailyMap.set(date, { date, taken: 0, skipped: 0, pending: 0, notTaken: 0 });
             const day = dailyMap.get(date);
             if (record.is_taken) day.taken++;
@@ -104,15 +124,15 @@ export async function GET(request: NextRequest) {
         const recentActivity = adherenceRecords
             .filter(r => r.is_taken || r.is_skipped)
             .sort((a, b) => new Date(b.taken_at || b.updated_at || 0).getTime() - new Date(a.taken_at || a.updated_at || 0).getTime())
-            .slice(0, 3);
+            .slice(0, 5);
             
         const upcomingActivity = adherenceRecords
-            .filter(r => isPending(r) && (new Date(r.scheduled_date).toISOString().split('T')[0] > todayStr || (new Date(r.scheduled_date).toISOString().split('T')[0] === todayStr && r.scheduled_time > timeStr)))
+            .filter(r => isPending(r) && (getDateStr(r.scheduled_date) > todayStr || (getDateStr(r.scheduled_date) === todayStr && r.scheduled_time > timeStr)))
             .sort((a, b) => {
-                const dateA = new Date(a.scheduled_date).toISOString().split('T')[0];
-                const dateB = new Date(b.scheduled_date).toISOString().split('T')[0];
+                const dateA = getDateStr(a.scheduled_date);
+                const dateB = getDateStr(b.scheduled_date);
                 if (dateA !== dateB) return dateA.localeCompare(dateB);
-                return a.scheduled_time.localeCompare(b.scheduled_time);
+                return String(a.scheduled_time).localeCompare(String(b.scheduled_time));
             })
             .slice(0, 5);
 
